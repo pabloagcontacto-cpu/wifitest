@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from tools.helpers import utc_now_iso
+from tools.helpers import ensure_interface_mode, run_command, utc_now_iso
 
 AIRODUMP_CSV_SUFFIX = "-01.csv"
 NOT_ASSOCIATED_BSSID = "(not associated)"
@@ -213,7 +213,7 @@ def parse_airodump_csv(csv_path: Path, include_hidden: bool) -> tuple[list[dict[
 
 def scan_wifi_networks_execute(input: dict[str, Any]) -> dict[str, Any]:
     """Execute the Wi-Fi scan using airodump-ng and return CSV + normalized output."""
-    interface = str(input["interface"])
+    requested_interface = str(input["interface"])
     scan_seconds = int(str(input["scan_seconds"]))
     band = str(input["band"])
     include_hidden = parse_bool(str(input["include_hidden"]))
@@ -223,6 +223,10 @@ def scan_wifi_networks_execute(input: dict[str, Any]) -> dict[str, Any]:
             "The 'airodump-ng' binary is not available in PATH. "
             "Install aircrack-ng before using this tool."
         )
+
+    interface_details = ensure_interface_mode(requested_interface, "monitor")
+    interface = interface_details["resolved_interface"]
+    interface_snapshot = run_command(["iw", "dev"], check=False).stdout.strip()
 
     with tempfile.TemporaryDirectory(prefix="wifitest_scan_") as temp_dir:
         output_prefix = Path(temp_dir) / "scan"
@@ -258,10 +262,26 @@ def scan_wifi_networks_execute(input: dict[str, Any]) -> dict[str, Any]:
         raw_csv = csv_path.read_text(encoding="utf-8")
         networks, clients = parse_airodump_csv(csv_path, include_hidden)
 
+    raw_text = raw_csv
+    if len(networks) == 0:
+        diagnostic = [
+            "",
+            "--- WIFITEST DIAGNOSTIC ---",
+            f"requested_interface={requested_interface}",
+            f"resolved_interface={interface}",
+            "iw_dev_snapshot:",
+            interface_snapshot or "<empty>",
+            f"airodump_stdout={tail_text(stdout_text.strip()) or '<empty>'}",
+            f"airodump_stderr={tail_text(stderr_text.strip()) or '<empty>'}",
+        ]
+        raw_text = raw_csv + "\n".join(diagnostic)
+
     return {
-        "raw_text": raw_csv,
+        "raw_text": raw_text,
         "normalized": {
             "interface": interface,
+            "requested_interface": requested_interface,
+            "required_mode": "monitor",
             "scan_seconds": scan_seconds,
             "band": band,
             "include_hidden": include_hidden,

@@ -150,7 +150,7 @@
           "type": "string",
           "mode": "free",
           "required": true,
-          "default": "wlan0mon"
+          "default": "wlan0"
         },
         "target_bssids": {
           "type": "string",
@@ -181,6 +181,189 @@
           "vendor": "string|null",
           "confidence": "string",
           "evidence": ["string"],
+          "completed_at": "iso8601"
+        },
+        "nombreTool": "string",
+        "job_id": "string"
+      }
+    },
+    "connect_to_target_network": {
+      "input": {
+        "interface": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": "wlan0"
+        },
+        "ssid": {
+          "type": "string",
+          "mode": "free",
+          "required": true,
+          "default": ""
+        },
+        "password": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": ""
+        }
+      },
+      "output": {
+        "raw_text": "string",
+        "normalized": {
+          "requested_ssid": "string",
+          "interface": "string",
+          "resolved_interface": "string",
+          "required_mode": "string",
+          "connection_attempted": "boolean",
+          "connected": "boolean",
+          "active_ssid": "string|null",
+          "active_bssid": "string|null",
+          "ipv4": "string|null",
+          "gateway": "string|null",
+          "dns_servers": ["string"],
+          "connection_profile": "string|null",
+          "failure_stage": "string|null",
+          "failure_reason": "string|null",
+          "completed_at": "iso8601"
+        },
+        "nombreTool": "string",
+        "job_id": "string"
+      }
+    },
+    "get_connection_status": {
+      "input": {
+        "interface": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": "wlan0"
+        },
+        "expected_ssid": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": ""
+        }
+      },
+      "output": {
+        "raw_text": "string",
+        "normalized": {
+          "interface": "string",
+          "resolved_interface": "string",
+          "required_mode": "string",
+          "connected": "boolean",
+          "active_ssid": "string|null",
+          "active_bssid": "string|null",
+          "matches_expected_target": "boolean",
+          "expected_ssid": "string|null",
+          "ipv4": "string|null",
+          "gateway": "string|null",
+          "dns_servers": ["string"],
+          "connection_profile": "string|null",
+          "completed_at": "iso8601"
+        },
+        "nombreTool": "string",
+        "job_id": "string"
+      }
+    },
+    "disconnect_from_network": {
+      "input": {
+        "interface": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": "wlan0"
+        }
+      },
+      "output": {
+        "raw_text": "string",
+        "normalized": {
+          "interface": "string",
+          "resolved_interface": "string",
+          "required_mode": "string",
+          "disconnect_attempted": "boolean",
+          "disconnected": "boolean",
+          "active_ssid": "string|null",
+          "active_bssid": "string|null",
+          "ipv4": "string|null",
+          "gateway": "string|null",
+          "dns_servers": ["string"],
+          "connection_profile": "string|null",
+          "completed_at": "iso8601"
+        },
+        "nombreTool": "string",
+        "job_id": "string"
+      }
+    },
+    "discover_gateway_and_router_profile": {
+      "input": {
+        "interface": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": "wlan0"
+        },
+        "expected_ssid": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": ""
+        }
+      },
+      "output": {
+        "raw_text": "string",
+        "normalized": {
+          "interface": "string",
+          "resolved_interface": "string",
+          "required_mode": "string",
+          "connected": "boolean",
+          "matches_expected_target": "boolean",
+          "expected_ssid": "string|null",
+          "active_ssid": "string|null",
+          "active_bssid": "string|null",
+          "gateway_ip": "string|null",
+          "gateway_mac": "string|null",
+          "gateway_mac_source": "string|null",
+          "gateway_vendor": "string|null",
+          "gateway_vendor_source": "string|null",
+          "icmp_reachable": "boolean|null",
+          "avg_latency_ms": "number|null",
+          "open_ports": ["number"],
+          "dns_servers": ["string"],
+          "connection_profile": "string|null",
+          "web_admin": {
+            "http": {
+              "reachable": "boolean",
+              "url": "string",
+              "final_url": "string|null",
+              "status_code": "number|null",
+              "title": "string|null",
+              "server": "string|null",
+              "content_type": "string|null",
+              "text_preview": ["string"]
+            },
+            "https": {
+              "reachable": "boolean",
+              "url": "string",
+              "final_url": "string|null",
+              "status_code": "number|null",
+              "title": "string|null",
+              "server": "string|null",
+              "content_type": "string|null",
+              "text_preview": ["string"]
+            }
+          },
+          "admin_auth": {
+            "auth_required": "boolean|null",
+            "auth_type": "string|null",
+            "login_form_detected": "boolean",
+            "password_field_detected": "boolean",
+            "username_field_detected": "boolean",
+            "source_url": "string|null",
+            "evidence": ["string"]
+          },
+          "router_profile_confidence": "string",
           "completed_at": "iso8601"
         },
         "nombreTool": "string",

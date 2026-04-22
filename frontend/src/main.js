@@ -16,6 +16,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const viewTitle = document.querySelector("#view-title");
   const targetNetworkPanel = document.querySelector("#target-network-panel");
   const dashboardHero = document.querySelector("#dashboard-hero");
+  const dashboardModeTabs = document.querySelector("#dashboard-mode-tabs");
   const dashboardTopGrid = document.querySelector("#dashboard-top-grid");
   const toolsList = document.querySelector("#tools-list");
   const toolsStatusText = document.querySelector("#tools-status-text");
@@ -31,6 +32,8 @@ window.addEventListener("DOMContentLoaded", () => {
     selectedJobId: null,
     formValuesByTool: {},
     toolDiscoveryError: null,
+    dashboardConnectionView: null,
+    showConnectForm: false,
   };
 
   badge.textContent = isTauriRuntime
@@ -81,6 +84,26 @@ window.addEventListener("DOMContentLoaded", () => {
     return getLatestJobByTool(state, "scan_wifi_networks");
   }
 
+  function getToolExecutionState(state, toolName) {
+    const latestJob = getLatestJobByTool(state, toolName);
+    const isRunning = latestJob?.status === "running" || latestJob?.status === "queued";
+    return {
+      latestJob,
+      isRunning,
+    };
+  }
+
+  function getLoadingButtonClass(isLoading, baseClass = "primary-action") {
+    return `${baseClass} ${isLoading ? "is-loading" : ""}`.trim();
+  }
+
+  function getLoadingButtonAttrs(isLoading, loadingLabel) {
+    if (!isLoading) {
+      return "";
+    }
+    return `disabled aria-busy="true" data-loading-label="${escapeHtml(loadingLabel)}"`;
+  }
+
   function getLatestJobByTool(state, toolName) {
     const jobs = Object.values(state.jobs)
       .filter((job) => job.toolName === toolName)
@@ -109,6 +132,8 @@ window.addEventListener("DOMContentLoaded", () => {
     const scanNormalized = scanResult?.normalized ?? {};
     const profile = targetNetwork?.profile ?? null;
     const profileNormalized = profile?.normalized ?? {};
+    const routerProfile = targetNetwork?.routerProfile ?? null;
+    const routerProfileNormalized = routerProfile?.normalized ?? {};
     const relatedNetworks = targetNetwork?.relatedNetworks ?? [];
     const profileNetworks = profileNormalized.networks ?? [];
 
@@ -144,12 +169,15 @@ window.addEventListener("DOMContentLoaded", () => {
       selectedNetwork,
       relatedNetworks,
       profile,
+      routerProfile,
       profileNetworks,
       activeNetworks,
       primaryNetwork,
       scanResult,
       interface:
         targetNetwork?.interface ??
+        routerProfileNormalized.resolved_interface ??
+        routerProfileNormalized.interface ??
         profileNormalized.interface ??
         scanNormalized.interface ??
         null,
@@ -181,7 +209,21 @@ window.addEventListener("DOMContentLoaded", () => {
         profileNormalized.target_ssid ??
         selectedNetwork?.ssid ??
         null,
+      connection: targetNetwork?.connection ?? null,
     };
+  }
+
+  function getConnectionBadge(connection) {
+    if (!connection) {
+      return { tone: "muted", label: "No conectado" };
+    }
+    if (connection.connected && connection.matchesExpectedTarget) {
+      return { tone: "good", label: "Conectado a la red fijada" };
+    }
+    if (connection.connected) {
+      return { tone: "medium", label: "Conectado a otra red" };
+    }
+    return { tone: "muted", label: "No conectado" };
   }
 
   function getSignalTone(signal) {
@@ -262,6 +304,48 @@ window.addEventListener("DOMContentLoaded", () => {
       return "Señal débil";
     }
     return "Señal desconocida";
+  }
+
+  function getAdminAuthHeadline(adminAuth) {
+    if (!adminAuth || adminAuth.auth_required == null) {
+      return "No determinado";
+    }
+    if (!adminAuth.auth_required) {
+      return "Sin autenticacion aparente";
+    }
+    if (adminAuth.auth_type === "password_only") {
+      return "Panel con solo contrasena";
+    }
+    if (adminAuth.auth_type === "username_password") {
+      return "Panel con usuario y contrasena";
+    }
+    if (adminAuth.auth_type === "http_auth") {
+      return "Autenticacion HTTP";
+    }
+    return "Autenticacion requerida";
+  }
+
+  function getAdminAuthTone(adminAuth) {
+    if (!adminAuth || adminAuth.auth_required == null) {
+      return "muted";
+    }
+    return adminAuth.auth_required ? "medium" : "bad";
+  }
+
+  function formatAdminAuthEvidence(adminAuth) {
+    const evidence = adminAuth?.evidence ?? [];
+    if (!evidence.length) {
+      return "Sin evidencias concretas";
+    }
+
+    const labels = {
+      password_field: "campo de contrasena",
+      username_hint: "campo de usuario",
+      login_form: "formulario de acceso",
+      www_authenticate_header: "cabecera WWW-Authenticate",
+    };
+
+    return evidence.map((item) => labels[item] ?? item).join(", ");
   }
 
   function getClientsAssessment(clientsCount) {
@@ -655,6 +739,76 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function syncConnectionFromJobs(state) {
+    if (!state.targetNetwork) {
+      return;
+    }
+
+    const connectJob = getLatestJobByTool(state, "connect_to_target_network");
+    const statusJob = getLatestJobByTool(state, "get_connection_status");
+    const disconnectJob = getLatestJobByTool(state, "disconnect_from_network");
+    const candidates = [connectJob, statusJob, disconnectJob]
+      .filter((job) => job?.status === "completed" && job.result?.normalized)
+      .sort((left, right) => {
+        const leftTime = new Date(left.finishedAt ?? left.submittedAt ?? 0).getTime();
+        const rightTime = new Date(right.finishedAt ?? right.submittedAt ?? 0).getTime();
+        return rightTime - leftTime;
+      });
+
+    const latestConnectionJob = candidates[0];
+    if (!latestConnectionJob) {
+      return;
+    }
+
+    if (state.targetNetwork.connectionSourceJobId === latestConnectionJob.jobId) {
+      return;
+    }
+
+    const normalized = latestConnectionJob.result.normalized;
+    const isDisconnectJob = latestConnectionJob.toolName === "disconnect_from_network";
+    updateTargetNetwork({
+      connection: {
+        connected: isDisconnectJob ? !normalized.disconnected : normalized.connected,
+        activeSsid: normalized.active_ssid,
+        activeBssid: normalized.active_bssid,
+        matchesExpectedTarget: isDisconnectJob
+          ? false
+          : (normalized.matches_expected_target ?? normalized.connected),
+        interface: normalized.resolved_interface ?? normalized.interface,
+        ipv4: normalized.ipv4,
+        gateway: normalized.gateway,
+        dnsServers: normalized.dns_servers ?? [],
+        lastCheckedAt: normalized.completed_at ?? new Date().toISOString(),
+        sourceTool: latestConnectionJob.toolName,
+      },
+      connectionSourceJobId: latestConnectionJob.jobId,
+    });
+  }
+
+  function syncRouterProfileFromJobs(state) {
+    if (!state.targetNetwork) {
+      return;
+    }
+
+    const latestRouterJob = getLatestJobByTool(state, "discover_gateway_and_router_profile");
+    if (
+      latestRouterJob?.status !== "completed" ||
+      !latestRouterJob.result?.normalized
+    ) {
+      return;
+    }
+
+    if (state.targetNetwork.routerProfileSourceJobId === latestRouterJob.jobId) {
+      return;
+    }
+
+    updateTargetNetwork({
+      routerProfile: latestRouterJob.result,
+      routerProfileSourceJobId: latestRouterJob.jobId,
+      routerProfileRefreshedAt: new Date().toISOString(),
+    });
+  }
+
   function renderTargetNetworkPanel(state) {
     const targetContext = getTargetContext(state);
     const targetNetwork = targetContext.targetNetwork;
@@ -677,6 +831,22 @@ window.addEventListener("DOMContentLoaded", () => {
 
     const selectedNetwork = targetContext.primaryNetwork ?? targetNetwork.selectedNetwork ?? {};
     const radiosCount = targetContext.targetBssids.length;
+    const connection = targetContext.connection;
+    const connectionBadge = getConnectionBadge(connection);
+    const checkConnectionState = getToolExecutionState(state, "get_connection_status");
+    const connectState = getToolExecutionState(state, "connect_to_target_network");
+    const disconnectState = getToolExecutionState(state, "disconnect_from_network");
+    const connectionSummary = connection?.connected
+      ? [
+          connection.activeSsid ? `SSID activo ${connection.activeSsid}` : null,
+          connection.ipv4 ? `IP ${connection.ipv4}` : null,
+          connection.gateway ? `Gateway ${connection.gateway}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : "Todavia no hay una conexion confirmada a esta red.";
+
+    const isConnectedToTarget = Boolean(connection?.connected && connection?.matchesExpectedTarget);
 
     targetNetworkPanel.innerHTML = `
       <div class="target-network-panel__content">
@@ -684,18 +854,129 @@ window.addEventListener("DOMContentLoaded", () => {
           <p class="section-tag">Red objetivo</p>
           <h3>${escapeHtml(targetContext.targetSsid || selectedNetwork.ssid || "(Oculta)")}</h3>
           <p>${escapeHtml(radiosCount > 0 ? `${radiosCount} radio(s) detectados para esta red` : "Perfil basico guardado a partir del escaneo inicial")} · ${escapeHtml(selectedNetwork.bssid ? `BSSID principal ${selectedNetwork.bssid}` : "Sin BSSID principal")}</p>
+          <p class="target-network-panel__connection">${escapeHtml(connectionSummary)}</p>
         </div>
         <div class="target-network-panel__status">
           <span class="pill">${escapeHtml(selectedNetwork.security ?? "Perfil guardado")}</span>
+          <span class="signal-pill signal-pill--${escapeHtml(connectionBadge.tone)}">${escapeHtml(connectionBadge.label)}</span>
+          <button
+            id="check-connection-button"
+            type="button"
+            class="${escapeHtml(getLoadingButtonClass(checkConnectionState.isRunning, "secondary-action"))}"
+            ${getLoadingButtonAttrs(checkConnectionState.isRunning, "Comprobando")}
+          >
+            Comprobar conexion
+          </button>
+          ${
+            isConnectedToTarget
+              ? `
+                <button
+                  id="disconnect-network-button"
+                  type="button"
+                  class="${escapeHtml(getLoadingButtonClass(disconnectState.isRunning, "danger-action"))}"
+                  ${getLoadingButtonAttrs(disconnectState.isRunning, "Desconectando")}
+                >
+                  Desconectar
+                </button>
+              `
+              : `
+                <button
+                  id="toggle-connect-form-button"
+                  type="button"
+                  class="${escapeHtml(getLoadingButtonClass(connectState.isRunning, "primary-action"))}"
+                  ${connectState.isRunning ? getLoadingButtonAttrs(true, "Conectando") : ""}
+                >
+                  ${connectState.isRunning ? "Conectando" : (uiState.showConnectForm ? "Cancelar" : "Conectar")}
+                </button>
+              `
+          }
           <button id="clear-target-network-button" type="button" class="secondary-action">Desfijar red</button>
         </div>
       </div>
+      ${
+        uiState.showConnectForm && !isConnectedToTarget
+          ? `
+            <form id="connect-target-network-form" class="target-network-connect-form">
+              <label class="form-field">
+                <span>Contrasena Wi-Fi</span>
+                <input id="target-network-password" type="password" placeholder="Si la red es abierta, dejalo vacio" />
+              </label>
+              <div class="tool-form-actions">
+                <button
+                  type="submit"
+                  class="primary-action"
+                  ${connectState.isRunning ? "disabled" : ""}
+                >
+                  Intentar conexion
+                </button>
+              </div>
+            </form>
+          `
+          : ""
+      }
     `;
 
     const clearButton = document.querySelector("#clear-target-network-button");
     clearButton?.addEventListener("click", () => {
       clearTargetNetwork();
+      uiState.showConnectForm = false;
       activateView("dashboard");
+    });
+
+    const toggleConnectFormButton = document.querySelector("#toggle-connect-form-button");
+    toggleConnectFormButton?.addEventListener("click", () => {
+      uiState.showConnectForm = !uiState.showConnectForm;
+      renderDashboard(getState());
+    });
+
+    const disconnectNetworkButton = document.querySelector("#disconnect-network-button");
+    disconnectNetworkButton?.addEventListener("click", async () => {
+      try {
+        const job = await executeTool("disconnect_from_network", {
+          interface: targetContext.interface ?? "wlan0",
+        });
+        uiState.showConnectForm = false;
+        uiState.selectedJobId = job.jobId;
+        uiState.dashboardConnectionView = "not_connected";
+        renderDashboard(getState());
+      } catch (error) {
+        console.error("No se pudo lanzar la desconexion Wi-Fi:", error);
+      }
+    });
+
+    const checkConnectionButton = document.querySelector("#check-connection-button");
+    checkConnectionButton?.addEventListener("click", async () => {
+      try {
+        const job = await executeTool("get_connection_status", {
+          interface: targetContext.interface ?? "wlan0",
+          expected_ssid: targetContext.targetSsid ?? "",
+        });
+        uiState.selectedJobId = job.jobId;
+        renderDashboard(getState());
+      } catch (error) {
+        console.error("No se pudo comprobar la conexion:", error);
+      }
+    });
+
+    const connectForm = document.querySelector("#connect-target-network-form");
+    connectForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const passwordInput = document.querySelector("#target-network-password");
+      const password = passwordInput?.value ?? "";
+
+      try {
+        const job = await executeTool("connect_to_target_network", {
+          interface: targetContext.interface ?? "wlan0",
+          ssid: targetContext.targetSsid ?? "",
+          password,
+        });
+        uiState.showConnectForm = false;
+        uiState.selectedJobId = job.jobId;
+        renderDashboard(getState());
+      } catch (error) {
+        console.error("No se pudo lanzar la conexion Wi-Fi:", error);
+      }
     });
   }
 
@@ -706,7 +987,12 @@ window.addEventListener("DOMContentLoaded", () => {
       ? tools.filter(
           (tool) =>
             tool.name !== "scan_wifi_networks" &&
-            tool.name !== "inspect_target_network_profile",
+            tool.name !== "inspect_target_network_profile" &&
+            tool.name !== "detect_wps_exposure" &&
+            tool.name !== "connect_to_target_network" &&
+            tool.name !== "get_connection_status" &&
+            tool.name !== "disconnect_from_network" &&
+            tool.name !== "discover_gateway_and_router_profile",
         )
       : tools;
 
@@ -885,6 +1171,8 @@ window.addEventListener("DOMContentLoaded", () => {
     const network = targetContext.primaryNetwork;
     const latestWpsJob = getLatestJobByTool(state, "detect_wps_exposure");
     const latestProfileJob = getLatestJobByTool(state, "inspect_target_network_profile");
+    const profileExecutionState = getToolExecutionState(state, "inspect_target_network_profile");
+    const wpsExecutionState = getToolExecutionState(state, "detect_wps_exposure");
     const securityAssessment = assessSecurityProfile(network);
     const wpsAssessment = assessWpsRisk(targetNetwork?.wps);
 
@@ -975,8 +1263,8 @@ window.addEventListener("DOMContentLoaded", () => {
               <button
                 id="refresh-target-profile-button"
                 type="button"
-                class="secondary-action"
-                ${hasProfileContext ? "" : "disabled"}
+                class="${escapeHtml(getLoadingButtonClass(profileExecutionState.isRunning, "secondary-action"))}"
+                ${hasProfileContext ? getLoadingButtonAttrs(profileExecutionState.isRunning, "Actualizando") : "disabled"}
               >
                 Actualizar perfil
               </button>
@@ -1151,8 +1439,8 @@ window.addEventListener("DOMContentLoaded", () => {
               <button
                 id="run-wps-check-button"
                 type="button"
-                class="primary-action"
-                ${hasWpsContext ? "" : "disabled"}
+                class="${escapeHtml(getLoadingButtonClass(wpsExecutionState.isRunning, "primary-action"))}"
+                ${hasWpsContext ? getLoadingButtonAttrs(wpsExecutionState.isRunning, "Analizando") : "disabled"}
               >
                 Analizar WPS
               </button>
@@ -1247,9 +1535,269 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function renderConnectedDashboardPlaceholder(state) {
+    const targetContext = getTargetContext(state);
+    const connection = targetContext.connection;
+    const badge = getConnectionBadge(connection);
+    const hasConfirmedConnection = Boolean(connection?.connected && connection?.matchesExpectedTarget);
+    const routerExecutionState = getToolExecutionState(state, "discover_gateway_and_router_profile");
+    const latestRouterJob = getLatestJobByTool(state, "discover_gateway_and_router_profile");
+    const routerProfile = targetContext.routerProfile?.normalized ?? null;
+    const openPorts = routerProfile?.open_ports ?? [];
+    const webAdmin = routerProfile?.web_admin ?? {
+      http: { reachable: false, title: null, status_code: null, server: null, url: null, final_url: null, content_type: null, text_preview: [] },
+      https: { reachable: false, title: null, status_code: null, server: null, url: null, final_url: null, content_type: null, text_preview: [] },
+    };
+    const adminAuth = routerProfile?.admin_auth ?? null;
+
+    let routerTone = "muted";
+    let routerHeadline = "Todavia sin analizar";
+    let routerSummary = "Lanza esta funcionalidad para identificar el gateway, el fabricante probable del router y algunos servicios internos habituales.";
+
+    if (routerExecutionState.isRunning) {
+      routerTone = "medium";
+      routerHeadline = "Identificando router";
+      routerSummary = "Se esta comprobando el gateway activo, el fabricante por MAC y la posible superficie web del router.";
+    } else if (latestRouterJob?.status === "failed") {
+      routerTone = "bad";
+      routerHeadline = "Error en la identificacion";
+      routerSummary = latestRouterJob.error?.message ?? "No se pudo completar la identificacion del router.";
+    } else if (routerProfile) {
+      const hasGateway = Boolean(routerProfile.gateway_ip);
+      const hasWebAdmin = Boolean(webAdmin.http?.reachable || webAdmin.https?.reachable);
+      routerTone = hasGateway ? "good" : "medium";
+      routerHeadline = hasWebAdmin ? "Router identificado" : "Gateway identificado";
+      routerSummary = hasWebAdmin
+        ? "Se ha localizado el router y tambien hay indicios de una interfaz web de administracion accesible desde la red local."
+        : "Se ha identificado el gateway activo y algunos rasgos basicos del router conectado.";
+    }
+
+    const routerRecommendations = [];
+    if (routerProfile) {
+      if (webAdmin.http?.reachable && !webAdmin.https?.reachable) {
+        routerRecommendations.push("Si el panel web solo responde por HTTP, conviene revisar si el router permite administracion segura por HTTPS.");
+      }
+      if (openPorts.includes(23)) {
+        routerRecommendations.push("Se ha detectado Telnet abierto. Si no es necesario, seria recomendable desactivarlo.");
+      }
+      if (!routerProfile.gateway_mac) {
+        routerRecommendations.push("No se ha podido resolver la MAC del gateway con la informacion disponible en esta comprobacion. Podemos reintentarlo con mas fallbacks o tras refrescar la vecindad ARP.");
+      }
+      if (!routerProfile.gateway_vendor) {
+        routerRecommendations.push("No se ha podido identificar el fabricante por MAC. Mas adelante podemos enriquecer la base local de fabricantes.");
+      }
+      if (adminAuth?.auth_required && adminAuth?.auth_type === "password_only") {
+        routerRecommendations.push("El panel parece pedir solo contrasena. Esto es util para futuras comprobaciones controladas de credenciales del router.");
+      }
+      if (adminAuth?.auth_required && adminAuth?.auth_type === "username_password") {
+        routerRecommendations.push("El panel parece usar usuario y contrasena. Ya tenemos una base buena para futuras comprobaciones de credenciales por defecto.");
+      }
+      if (!routerRecommendations.length) {
+        routerRecommendations.push("Esta identificacion inicial del router nos da una buena base para las siguientes comprobaciones conectadas del MVP.");
+      }
+    }
+
+    const confidenceTone = routerProfile?.router_profile_confidence === "high"
+      ? "good"
+      : routerProfile?.router_profile_confidence === "medium"
+        ? "medium"
+        : "muted";
+
+    scanNetworksFeature.innerHTML = `
+      <div class="target-profile">
+        <section class="profile-panel">
+          <div class="feature-subheading">
+            <h4>Identificar el router</h4>
+            <span class="signal-pill signal-pill--${escapeHtml(routerTone)}">${escapeHtml(routerHeadline)}</span>
+          </div>
+          <div class="wps-check-layout">
+            <div class="wps-check-copy">
+              <p>${escapeHtml(routerSummary)}</p>
+              <div class="wps-check-meta">
+                <span><strong>Estado:</strong> ${escapeHtml(badge.label)}</span>
+                <span><strong>SSID activo:</strong> ${escapeHtml(connection?.activeSsid ?? "No conectado")}</span>
+                <span><strong>Interfaz:</strong> ${escapeHtml(connection?.interface ?? targetContext.interface ?? "No disponible")}</span>
+                <span><strong>IP local:</strong> ${escapeHtml(connection?.ipv4 ?? "No disponible")}</span>
+              </div>
+            </div>
+            <div class="wps-check-actions">
+              <button
+                id="discover-router-profile-button"
+                type="button"
+                class="${escapeHtml(getLoadingButtonClass(routerExecutionState.isRunning, "primary-action"))}"
+                ${hasConfirmedConnection ? getLoadingButtonAttrs(routerExecutionState.isRunning, "Analizando") : "disabled"}
+              >
+                Identificar router
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="profile-panel">
+          <div class="feature-subheading">
+            <h4>Perfil detectado del router</h4>
+            <span class="signal-pill signal-pill--${escapeHtml(confidenceTone)}">${escapeHtml(routerProfile?.router_profile_confidence ? `Confianza ${routerProfile.router_profile_confidence}` : "Sin perfil guardado")}</span>
+          </div>
+          ${
+            routerProfile
+              ? `
+                <div class="security-assessment-layout">
+                  <div class="security-assessment-summary">
+                    <p>Esta tarjeta resume a que equipo estamos llegando una vez conectados: su gateway, su fabricante probable y si expone servicios habituales de administracion dentro de la red local.</p>
+                  </div>
+                  <div class="security-attribute-grid">
+                    <article class="security-attribute-card">
+                      <div class="security-attribute-card__header">
+                        <span>Gateway</span>
+                      </div>
+                      <div class="security-attribute-card__body">
+                        <span class="signal-pill signal-pill--${escapeHtml(routerProfile.gateway_ip ? "good" : "muted")}">${escapeHtml(routerProfile.gateway_ip ?? "No disponible")}</span>
+                        <p>Es la direccion interna del router a la que suelen salir los dispositivos para alcanzar otras redes o Internet.</p>
+                      </div>
+                    </article>
+                    <article class="security-attribute-card">
+                      <div class="security-attribute-card__header">
+                        <span>Fabricante</span>
+                      </div>
+                      <div class="security-attribute-card__body">
+                        <span class="signal-pill signal-pill--${escapeHtml(routerProfile.gateway_vendor ? "good" : "muted")}">${escapeHtml(routerProfile.gateway_vendor ?? "No identificado")}</span>
+                        <p>Se infiere a partir del prefijo MAC del gateway usando la base local \`mac.csv\`, lo que ayuda a orientar futuras comprobaciones.</p>
+                      </div>
+                    </article>
+                    <article class="security-attribute-card">
+                      <div class="security-attribute-card__header">
+                        <span>Latencia</span>
+                      </div>
+                      <div class="security-attribute-card__body">
+                        <span class="signal-pill signal-pill--${escapeHtml(routerProfile.icmp_reachable ? "good" : "muted")}">${escapeHtml(routerProfile.avg_latency_ms != null ? `${routerProfile.avg_latency_ms.toFixed(2)} ms` : "Sin dato")}</span>
+                        <p>Nos indica si el gateway responde a una comprobacion basica de red y cuanto tarda aproximadamente en contestar.</p>
+                      </div>
+                    </article>
+                    <article class="security-attribute-card">
+                      <div class="security-attribute-card__header">
+                        <span>Servicios</span>
+                      </div>
+                      <div class="security-attribute-card__body">
+                        <span class="signal-pill signal-pill--${escapeHtml(openPorts.length ? "medium" : "muted")}">${escapeHtml(openPorts.length ? openPorts.join(", ") : "Sin puertos comunes detectados")}</span>
+                        <p>Se revisan algunos puertos muy habituales en routers, como web, SSH o Telnet, para saber que superficie interna podria estar expuesta.</p>
+                      </div>
+                    </article>
+                  </div>
+                  <div class="security-assessment-grid">
+                    <article class="profile-highlight-card">
+                      <span>Administracion web</span>
+                      <strong>${escapeHtml(webAdmin.http?.reachable || webAdmin.https?.reachable ? "Detectada" : "No detectada")}</strong>
+                      <small><strong>HTTP:</strong> <a class="admin-link" href="${escapeHtml(webAdmin.http?.url ?? "#")}" target="_blank" rel="noreferrer">${escapeHtml(webAdmin.http?.url ?? "No disponible")}</a></small>
+                      <small><strong>HTTPS:</strong> <a class="admin-link" href="${escapeHtml(webAdmin.https?.url ?? "#")}" target="_blank" rel="noreferrer">${escapeHtml(webAdmin.https?.url ?? "No disponible")}</a></small>
+                      <small>
+                        HTTP: ${escapeHtml(webAdmin.http?.reachable ? `si (${webAdmin.http?.status_code ?? "sin codigo"})` : "no")} ·
+                        HTTPS: ${escapeHtml(webAdmin.https?.reachable ? `si (${webAdmin.https?.status_code ?? "sin codigo"})` : "no")}
+                      </small>
+                      <small><strong>Pagina detectada:</strong> ${escapeHtml(webAdmin.https?.title ?? webAdmin.http?.title ?? "Sin titulo detectado")}</small>
+                      <small><strong>Servidor:</strong> ${escapeHtml(webAdmin.https?.server ?? webAdmin.http?.server ?? "No anunciado")}</small>
+                      <small><strong>Contenido:</strong> ${escapeHtml(webAdmin.https?.content_type ?? webAdmin.http?.content_type ?? "No disponible")}</small>
+                      <small><strong>URL final:</strong> <a class="admin-link" href="${escapeHtml(webAdmin.https?.final_url ?? webAdmin.http?.final_url ?? "#")}" target="_blank" rel="noreferrer">${escapeHtml(webAdmin.https?.final_url ?? webAdmin.http?.final_url ?? "No disponible")}</a></small>
+                      <small>La comprobacion HTTPS acepta certificados autofirmados para poder inspeccionar routers domesticos sin bloquearse por ese aviso.</small>
+                    </article>
+                    <article class="profile-highlight-card">
+                      <span>Detalles adicionales</span>
+                      <small><strong>MAC gateway:</strong> ${escapeHtml(routerProfile.gateway_mac ?? "No disponible")}</small>
+                      <small><strong>Fuente MAC:</strong> ${escapeHtml(routerProfile.gateway_mac_source ?? "No disponible")}</small>
+                      <small><strong>BSSID activo:</strong> ${escapeHtml(routerProfile.active_bssid ?? "No disponible")}</small>
+                      <small><strong>Perfil NM:</strong> ${escapeHtml(routerProfile.connection_profile ?? "No disponible")}</small>
+                      <small><strong>DNS:</strong> ${escapeHtml((routerProfile.dns_servers ?? []).join(", ") || "No disponible")}</small>
+                    </article>
+                  </div>
+                  <div class="security-assessment-grid">
+                    <article class="profile-highlight-card">
+                      <span>Autenticacion del panel</span>
+                      <strong>${escapeHtml(getAdminAuthHeadline(adminAuth))}</strong>
+                      <small><strong>Estado:</strong> ${escapeHtml(adminAuth?.auth_required == null ? "No determinado" : (adminAuth.auth_required ? "Requerida" : "No detectada"))}</small>
+                      <small><strong>Tipo:</strong> ${escapeHtml(adminAuth?.auth_type ?? "No determinado")}</small>
+                      <small><strong>Fuente:</strong> ${escapeHtml(adminAuth?.source_url ?? "No disponible")}</small>
+                      <small><strong>Evidencias:</strong> ${escapeHtml(formatAdminAuthEvidence(adminAuth))}</small>
+                    </article>
+                  </div>
+                  <div class="security-assessment-grid">
+                    <article class="profile-highlight-card">
+                      <span>Recomendaciones</span>
+                      <small>Primeras conclusiones a partir de la identificacion del gateway y del router.</small>
+                      <ul class="assessment-list">
+                        ${routerRecommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+                      </ul>
+                    </article>
+                  </div>
+                </div>
+              `
+              : `
+                <div class="empty-state">
+                  <p>Cuando lances esta funcionalidad, aqui apareceran la IP del gateway, su MAC, el fabricante probable y los servicios basicos detectados del router.</p>
+                </div>
+              `
+          }
+        </section>
+      </div>
+    `;
+
+    const discoverRouterProfileButton = document.querySelector("#discover-router-profile-button");
+    discoverRouterProfileButton?.addEventListener("click", async () => {
+      if (!hasConfirmedConnection) {
+        return;
+      }
+
+      try {
+        const job = await executeTool("discover_gateway_and_router_profile", {
+          interface: targetContext.interface ?? "wlan0",
+          expected_ssid: targetContext.targetSsid ?? "",
+        });
+        uiState.selectedJobId = job.jobId;
+        renderDashboard(getState());
+      } catch (error) {
+        console.error("No se pudo identificar el router:", error);
+      }
+    });
+  }
+
+  function renderDashboardModeTabs(state) {
+    const hasTargetNetwork = Boolean(state.targetNetwork);
+    if (!hasTargetNetwork) {
+      dashboardModeTabs.hidden = true;
+      dashboardModeTabs.innerHTML = "";
+      return;
+    }
+
+    const targetContext = getTargetContext(state);
+    const hasConfirmedConnection = Boolean(targetContext.connection?.matchesExpectedTarget);
+    const activeView =
+      uiState.dashboardConnectionView ??
+      (hasConfirmedConnection ? "connected" : "not_connected");
+
+    uiState.dashboardConnectionView = activeView;
+
+    dashboardModeTabs.hidden = false;
+    dashboardModeTabs.innerHTML = `
+      <div class="subnav-tabs" aria-label="Modo del dashboard">
+        <button type="button" class="subnav-tab ${activeView === "not_connected" ? "is-active" : ""}" data-dashboard-mode="not_connected">
+          No conectado
+        </button>
+        <button type="button" class="subnav-tab ${activeView === "connected" ? "is-active" : ""}" data-dashboard-mode="connected">
+          Conectado
+        </button>
+      </div>
+    `;
+
+    document.querySelectorAll("[data-dashboard-mode]").forEach((button) => {
+      button.addEventListener("click", () => {
+        uiState.dashboardConnectionView = button.dataset.dashboardMode;
+        renderDashboard(getState());
+      });
+    });
+  }
+
   function renderScanNetworksFeature(state) {
     const tool = state.tools.find((entry) => entry.name === "scan_wifi_networks");
     const hasTargetNetwork = Boolean(state.targetNetwork);
+    const scanExecutionState = getToolExecutionState(state, "scan_wifi_networks");
 
     if (!tool) {
       scanNetworksFeature.innerHTML = `
@@ -1261,7 +1809,11 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     if (hasTargetNetwork) {
-      renderTargetNetworkInfoFeature(state);
+      if (uiState.dashboardConnectionView === "connected") {
+        renderConnectedDashboardPlaceholder(state);
+      } else {
+        renderTargetNetworkInfoFeature(state);
+      }
       return;
     }
 
@@ -1321,7 +1873,13 @@ window.addEventListener("DOMContentLoaded", () => {
               ${buildScanFieldsMarkup(tool)}
             </div>
             <div class="tool-form-actions">
-              <button type="submit" class="primary-action">Lanzar escaneo</button>
+              <button
+                type="submit"
+                class="${escapeHtml(getLoadingButtonClass(scanExecutionState.isRunning, "primary-action"))}"
+                ${getLoadingButtonAttrs(scanExecutionState.isRunning, "Escaneando")}
+              >
+                Lanzar escaneo
+              </button>
             </div>
           </form>
         </aside>
@@ -1390,8 +1948,13 @@ window.addEventListener("DOMContentLoaded", () => {
           profileSourceJobId: null,
           wps: null,
           wpsSourceJobId: null,
+          connection: null,
+          connectionSourceJobId: null,
+          routerProfile: null,
+          routerProfileSourceJobId: null,
         });
 
+        uiState.dashboardConnectionView = "not_connected";
         uiState.selectedJobId = latestScanJob.jobId;
         activateView("dashboard");
       });
@@ -1485,17 +2048,13 @@ window.addEventListener("DOMContentLoaded", () => {
     badge.textContent = `${isTauriRuntime ? "Runtime Tauri activo" : "Vista web cargada"} · ${tools.length} tools`;
 
     renderTargetNetworkPanel(state);
+    renderDashboardModeTabs(state);
     renderScanNetworksFeature(state);
 
     dashboardHero.hidden = !hasTargetNetwork;
-    dashboardTopGrid.hidden = !hasTargetNetwork;
-    dashboardResultCard.hidden = !hasTargetNetwork;
-
-    if (hasTargetNetwork) {
-      renderToolsList(tools);
-      renderJobs(state);
-      renderResultViewer(state);
-    }
+    renderToolsList(tools);
+    renderJobs(state);
+    renderResultViewer(state);
 
     document.querySelectorAll("[data-job-select]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -1514,6 +2073,8 @@ window.addEventListener("DOMContentLoaded", () => {
   subscribe((state) => {
     syncTargetProfileFromJobs(state);
     syncTargetWpsFromJobs(state);
+    syncConnectionFromJobs(state);
+    syncRouterProfileFromJobs(state);
     renderDashboard(getState());
   });
 

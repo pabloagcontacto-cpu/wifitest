@@ -185,6 +185,67 @@ def detect_wps_exposure_serializer(raw_args: dict[str, Any]) -> dict[str, Any]:
     return normalized_args
 
 
+def connect_to_target_network_serializer(raw_args: dict[str, Any]) -> dict[str, Any]:
+    """Normalize and validate the input for the Wi-Fi connection job."""
+    normalized_args = normalize_and_validate_contract_args("connect_to_target_network", raw_args)
+
+    interface = str(normalized_args["interface"]).strip()
+    if interface == "":
+        raise ValueError("The 'interface' argument cannot be empty.")
+
+    ssid = str(normalized_args["ssid"]).strip()
+    if ssid == "":
+        raise ValueError("The 'ssid' argument cannot be empty.")
+
+    normalized_args["interface"] = interface
+    normalized_args["ssid"] = ssid
+    normalized_args["password"] = str(normalized_args["password"])
+
+    return normalized_args
+
+
+def get_connection_status_serializer(raw_args: dict[str, Any]) -> dict[str, Any]:
+    """Normalize and validate the input for the connection status job."""
+    normalized_args = normalize_and_validate_contract_args("get_connection_status", raw_args)
+
+    interface = str(normalized_args["interface"]).strip()
+    if interface == "":
+        raise ValueError("The 'interface' argument cannot be empty.")
+
+    normalized_args["interface"] = interface
+    normalized_args["expected_ssid"] = str(normalized_args["expected_ssid"]).strip()
+
+    return normalized_args
+
+
+def disconnect_from_network_serializer(raw_args: dict[str, Any]) -> dict[str, Any]:
+    """Normalize and validate the input for the disconnect job."""
+    normalized_args = normalize_and_validate_contract_args("disconnect_from_network", raw_args)
+
+    interface = str(normalized_args["interface"]).strip()
+    if interface == "":
+        raise ValueError("The 'interface' argument cannot be empty.")
+
+    normalized_args["interface"] = interface
+    return normalized_args
+
+
+def discover_gateway_and_router_profile_serializer(raw_args: dict[str, Any]) -> dict[str, Any]:
+    """Normalize and validate the input for the router discovery job."""
+    normalized_args = normalize_and_validate_contract_args(
+        "discover_gateway_and_router_profile",
+        raw_args,
+    )
+
+    interface = str(normalized_args["interface"]).strip()
+    if interface == "":
+        raise ValueError("The 'interface' argument cannot be empty.")
+
+    normalized_args["interface"] = interface
+    normalized_args["expected_ssid"] = str(normalized_args["expected_ssid"]).strip()
+    return normalized_args
+
+
 def serializer(tool_name: str, raw_args: dict[str, Any]) -> dict[str, Any]:
     """Dispatch to the tool-specific serializer following the naming convention."""
     serializer_name = f"{tool_name}_serializer"

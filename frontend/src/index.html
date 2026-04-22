@@ -28,6 +28,10 @@
             <strong>Dashboard</strong>
           </button>
 
+          <button class="nav-tab" data-view="mcp" type="button">
+            <strong>MCP</strong>
+          </button>
+
           <button class="nav-tab" data-view="chat" type="button">
             <strong>Chat</strong>
           </button>
@@ -77,6 +81,16 @@
             </div>
           </div>
 
+          <div id="dashboard-mode-tabs" class="dashboard-mode-tabs" hidden></div>
+
+          <div class="dashboard-layout">
+            <article class="surface-card dashboard-feature-card">
+              <div id="scan-networks-feature" class="feature-panel"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view-panel" data-panel="mcp">
           <div class="dashboard-layout">
             <div id="dashboard-top-grid" class="dashboard-top-grid">
               <article class="surface-card dashboard-tool-browser">
@@ -98,10 +112,6 @@
                 <div id="jobs-list" class="jobs-list"></div>
               </article>
             </div>
-
-            <article class="surface-card dashboard-feature-card">
-              <div id="scan-networks-feature" class="feature-panel"></div>
-            </article>
 
             <article id="dashboard-result-card" class="surface-card dashboard-result-viewer">
               <div class="card-heading">

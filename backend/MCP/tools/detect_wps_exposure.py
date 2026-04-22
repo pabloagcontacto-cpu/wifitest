@@ -8,7 +8,7 @@ import signal
 import subprocess
 from typing import Any
 
-from tools.helpers import utc_now_iso
+from tools.helpers import ensure_interface_mode, utc_now_iso
 
 
 def parse_bool_from_lock_value(value: str) -> bool | None:
@@ -115,7 +115,7 @@ def parse_wash_output(raw_text: str, target_bssids: list[str]) -> dict[str, Any]
 
 def detect_wps_exposure_execute(input: dict[str, Any]) -> dict[str, Any]:
     """Execute wash for a few seconds and inspect whether the target BSSID exposes WPS."""
-    interface = str(input["interface"])
+    requested_interface = str(input["interface"])
     target_bssids = [
         candidate.strip().upper()
         for candidate in str(input["target_bssids"]).split(",")
@@ -128,6 +128,9 @@ def detect_wps_exposure_execute(input: dict[str, Any]) -> dict[str, Any]:
             "The 'wash' binary is not available in PATH. "
             "Install reaver-wps-fork-t6x or an equivalent package before using this tool."
         )
+
+    interface_details = ensure_interface_mode(requested_interface, "monitor")
+    interface = interface_details["resolved_interface"]
 
     command = ["wash", "-i", interface]
     process = subprocess.Popen(
@@ -158,6 +161,8 @@ def detect_wps_exposure_execute(input: dict[str, Any]) -> dict[str, Any]:
 
     parsed_output = parse_wash_output(stdout_text, target_bssids)
     parsed_output["interface"] = interface
+    parsed_output["requested_interface"] = requested_interface
+    parsed_output["required_mode"] = "monitor"
     parsed_output["scan_seconds"] = scan_seconds
     parsed_output["completed_at"] = utc_now_iso()
 

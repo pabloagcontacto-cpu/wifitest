@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from tools.helpers import utc_now_iso
+from tools.helpers import ensure_interface_mode, utc_now_iso
 from tools.scan_wifi_networks import (
     AIRODUMP_CSV_SUFFIX,
     build_airodump_command,
@@ -19,7 +19,7 @@ from tools.scan_wifi_networks import (
 
 def inspect_target_network_profile_execute(input: dict[str, Any]) -> dict[str, Any]:
     """Run a longer targeted scan and aggregate all observed radios for one SSID."""
-    interface = str(input["interface"])
+    requested_interface = str(input["interface"])
     target_ssid = str(input["target_ssid"])
     scan_seconds = int(str(input["scan_seconds"]))
 
@@ -28,6 +28,9 @@ def inspect_target_network_profile_execute(input: dict[str, Any]) -> dict[str, A
             "The 'airodump-ng' binary is not available in PATH. "
             "Install aircrack-ng before using this tool."
         )
+
+    interface_details = ensure_interface_mode(requested_interface, "monitor")
+    interface = interface_details["resolved_interface"]
 
     with tempfile.TemporaryDirectory(prefix="wifitest_profile_") as temp_dir:
         output_prefix = Path(temp_dir) / "profile"
@@ -107,6 +110,8 @@ def inspect_target_network_profile_execute(input: dict[str, Any]) -> dict[str, A
         "raw_text": raw_csv,
         "normalized": {
             "interface": interface,
+            "requested_interface": requested_interface,
+            "required_mode": "monitor",
             "target_ssid": target_ssid,
             "scan_seconds": scan_seconds,
             "target_present": len(target_networks) > 0,

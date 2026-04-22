@@ -217,6 +217,82 @@ def detect_wps_exposure(
     )
 
 
+@mcp.tool()
+def connect_to_target_network(
+    interface: str | None = None,
+    ssid: str | None = None,
+    password: str | None = None,
+) -> dict[str, Any]:
+    """Connect the local machine to the fixed Wi-Fi target network.
+
+    This tool is asynchronous. It returns a job_id that must be used later to
+    poll the final result from the corresponding job resource.
+    """
+    return procesarTool(
+        "connect_to_target_network",
+        {
+            "interface": interface,
+            "ssid": ssid,
+            "password": password,
+        },
+    )
+
+
+@mcp.tool()
+def get_connection_status(
+    interface: str | None = None,
+    expected_ssid: str | None = None,
+) -> dict[str, Any]:
+    """Check the current managed Wi-Fi connection state for one interface.
+
+    This tool is asynchronous. It returns a job_id that must be used later to
+    poll the final result from the corresponding job resource.
+    """
+    return procesarTool(
+        "get_connection_status",
+        {
+            "interface": interface,
+            "expected_ssid": expected_ssid,
+        },
+    )
+
+
+@mcp.tool()
+def disconnect_from_network(
+    interface: str | None = None,
+) -> dict[str, Any]:
+    """Disconnect the managed Wi-Fi interface from its current network.
+
+    This tool is asynchronous. It returns a job_id that must be used later to
+    poll the final result from the corresponding job resource.
+    """
+    return procesarTool(
+        "disconnect_from_network",
+        {
+            "interface": interface,
+        },
+    )
+
+
+@mcp.tool()
+def discover_gateway_and_router_profile(
+    interface: str | None = None,
+    expected_ssid: str | None = None,
+) -> dict[str, Any]:
+    """Identify the connected router, gateway and basic admin surface.
+
+    This tool is asynchronous. It returns a job_id that must be used later to
+    poll the final result from the corresponding job resource.
+    """
+    return procesarTool(
+        "discover_gateway_and_router_profile",
+        {
+            "interface": interface,
+            "expected_ssid": expected_ssid,
+        },
+    )
+
+
 @mcp.resource("job://{job_id}")
 def job_result(job_id: str) -> dict[str, Any]:
     """Expose the state and result of a queued job."""
