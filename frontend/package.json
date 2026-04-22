@@ -1,0 +1,18 @@
+{
+  "name": "wifitest-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "dev:x11": "GDK_BACKEND=x11 tauri dev",
+    "dev:safe": "WEBKIT_DISABLE_DMABUF_RENDERER=1 GDK_BACKEND=x11 tauri dev",
+    "build": "tauri build",
+    "build:x11": "GDK_BACKEND=x11 tauri build",
+    "build:safe": "WEBKIT_DISABLE_DMABUF_RENDERER=1 GDK_BACKEND=x11 tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=80.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wifitest-mcp"
+version = "0.1.0"
+description = "Async MCP server for the WIFITEST repository using streamable HTTP and Redis."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp[cli]==1.27.0",
+    "redis[hiredis]>=6.1.0,<7.0.0",
+]
+
+[project.scripts]
+wifitest-mcp = "server:main"
+wifitest-worker = "worker:main"
+
+[tool.setuptools]
+py-modules = ["server", "serializer", "worker", "redis_queue", "tool_contracts"]
+
+[tool.setuptools.packages.find]
+include = ["tools*"]

@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WIFITEST</title>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <div>
+            <p class="eyebrow">Auditoria Wi-Fi guiada</p>
+            <h1>WIFITEST</h1>
+          </div>
+          <p class="lead">
+            Evalua la seguridad de tu red Wi-Fi desde una interfaz clara,
+            pensada para revisar riesgos, interpretar resultados y actuar con
+            confianza.
+          </p>
+        </div>
+
+        <nav class="nav-tabs" aria-label="Secciones principales">
+          <button class="nav-tab is-active" data-view="dashboard" type="button">
+            <strong>Dashboard</strong>
+          </button>
+
+          <button class="nav-tab" data-view="chat" type="button">
+            <strong>Chat</strong>
+          </button>
+
+          <button class="nav-tab" data-view="workspace" type="button">
+            <strong>Espacio usuario</strong>
+          </button>
+        </nav>
+
+        <div class="topbar-status">
+          <span id="runtime-badge">Inicializando runtime...</span>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <header class="workspace-header">
+          <div>
+            <p class="workspace-label">Vista activa</p>
+            <h2 id="view-title">Dashboard</h2>
+          </div>
+          <div class="workspace-chip">Proteccion Wi-Fi</div>
+        </header>
+
+        <section class="view-panel is-visible" data-panel="dashboard">
+          <article id="target-network-panel" class="surface-card target-network-panel"></article>
+
+          <div id="dashboard-hero" class="hero-card">
+            <div>
+              <p class="section-tag">Centro operativo</p>
+              <h3>Supervision general de la seguridad de la red</h3>
+              <p>
+                Consulta el estado actual de tus revisiones, detecta puntos
+                debiles y accede rapidamente a las utilidades principales.
+              </p>
+            </div>
+            <div class="hero-metrics">
+              <article class="metric-card">
+                <span class="metric-label">Escaneos activos</span>
+                <strong id="metric-active-jobs">0</strong>
+                <p>Procesos en curso y comprobaciones abiertas en este momento.</p>
+              </article>
+              <article class="metric-card">
+                <span class="metric-label">Tools cargadas</span>
+                <strong id="metric-tools-count">0</strong>
+                <p>Herramientas disponibles para lanzar desde la interfaz.</p>
+              </article>
+            </div>
+          </div>
+
+          <div class="dashboard-layout">
+            <div id="dashboard-top-grid" class="dashboard-top-grid">
+              <article class="surface-card dashboard-tool-browser">
+                <div class="card-heading">
+                  <h3>Escaneos y utilidades</h3>
+                  <span class="pill">MCP</span>
+                </div>
+                <p id="tools-status-text">
+                  Cargando herramientas disponibles...
+                </p>
+                <div id="tools-list" class="tools-list"></div>
+              </article>
+
+              <article class="surface-card dashboard-jobs">
+                <div class="card-heading">
+                  <h3>Jobs y ejecuciones</h3>
+                  <span class="pill">Seguimiento</span>
+                </div>
+                <div id="jobs-list" class="jobs-list"></div>
+              </article>
+            </div>
+
+            <article class="surface-card dashboard-feature-card">
+              <div id="scan-networks-feature" class="feature-panel"></div>
+            </article>
+
+            <article id="dashboard-result-card" class="surface-card dashboard-result-viewer">
+              <div class="card-heading">
+                <h3>Resultado seleccionado</h3>
+                <span class="pill">Salida</span>
+              </div>
+              <div id="result-viewer" class="result-viewer"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view-panel" data-panel="chat">
+          <div class="hero-card hero-card-chat">
+            <div>
+              <p class="section-tag">Asistente</p>
+              <h3>Conversacion guiada sobre la seguridad Wi-Fi</h3>
+              <p>
+                Habla con el asistente para resolver dudas, interpretar
+                resultados y recibir orientacion util sin tecnicismos
+                innecesarios.
+              </p>
+            </div>
+          </div>
+
+          <div class="chat-layout">
+            <article class="surface-card chat-feed">
+              <div class="card-heading">
+                <h3>Conversacion</h3>
+                <span class="pill">Preview</span>
+              </div>
+
+              <div class="message assistant">
+                <span class="message-role">WIFITEST</span>
+                <p>
+                  Puedo ayudarte a revisar la seguridad de tu red Wi-Fi y
+                  explicarte los resultados sin lenguaje demasiado tecnico.
+                </p>
+              </div>
+
+              <div class="message user">
+                <span class="message-role">Usuario</span>
+                <p>Quiero comprobar si mi red de invitados esta bien protegida.</p>
+              </div>
+
+              <div class="message assistant">
+                <span class="message-role">WIFITEST</span>
+                <p>
+                  Te guiare primero por un escaneo inicial y despues te resumire
+                  los riesgos detectados y las medidas recomendadas.
+                </p>
+              </div>
+            </article>
+
+            <article class="surface-card chat-side">
+              <div class="card-heading">
+                <h3>Acciones futuras</h3>
+                <span class="pill">Asistencia</span>
+              </div>
+              <ul class="feature-list">
+                <li>Resolver dudas sobre la configuracion de la red</li>
+                <li>Recibir ayuda para interpretar hallazgos</li>
+                <li>Obtener recomendaciones explicadas paso a paso</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="view-panel" data-panel="workspace">
+          <div class="hero-card hero-card-user">
+            <div>
+              <p class="section-tag">Espacio usuario</p>
+              <h3>Informacion guardada y seguimiento de seguridad</h3>
+              <p>
+                Reune aqui la informacion mas util para dar continuidad al uso
+                de la aplicacion y consultar el historial de revisiones.
+              </p>
+            </div>
+          </div>
+
+          <div class="content-grid">
+            <article class="surface-card">
+              <div class="card-heading">
+                <h3>Datos de red guardados</h3>
+                <span class="pill">Configuracion</span>
+              </div>
+              <p>
+                Aqui podras guardar la informacion habitual de la red para tener
+                una experiencia mas rapida y personalizada.
+              </p>
+              <ul class="feature-list">
+                <li>SSID principal o red de invitados</li>
+                <li>Notas sobre el entorno o el comercio</li>
+                <li>Configuracion asociada a futuras revisiones</li>
+              </ul>
+            </article>
+
+            <article class="surface-card">
+              <div class="card-heading">
+                <h3>Historial y vulnerabilidades</h3>
+                <span class="pill">Seguimiento</span>
+              </div>
+              <p>
+                Esta vista te ayudara a revisar escaneos anteriores, comparar
+                resultados y seguir la evolucion de la seguridad de la red.
+              </p>
+              <ul class="feature-list">
+                <li>Linea temporal de revisiones</li>
+                <li>Ultimos riesgos detectados</li>
+                <li>Medidas pendientes o aplicadas</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

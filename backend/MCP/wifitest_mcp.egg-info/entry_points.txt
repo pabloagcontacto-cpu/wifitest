@@ -1,0 +1,3 @@
+[console_scripts]
+wifitest-mcp = server:main
+wifitest-worker = worker:main

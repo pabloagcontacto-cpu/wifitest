@@ -1,0 +1,1066 @@
+WIFITEST - Resumen de funcionalidades propuestas
+================================================
+
+Este documento resume funcionalidades candidatas para el dashboard de WIFITEST.
+Cada funcionalidad se expresa como una pieza de frontend que puede apoyarse en una
+o varias tools MCP. La separacion principal se organiza por:
+
+- Estado operativo: no conectado / conectado
+- Tipo de funcionalidad: reconocimiento pasivo / reconocimiento activo / pruebas de seguridad / ataques activos
+
+Notas:
+- "No conectado" significa sin estar asociado a la red objetivo.
+- "Conectado" significa una vez unido a la red objetivo o a la red que se quiere auditar.
+- Las funcionalidades agresivas se incluyen como parte del mapa completo del proyecto,
+  pero no implican recomendacion de exponerlas en un flujo normal de usuario.
+
+
+NO CONECTADO
+============
+
+RECONOCIMIENTO PASIVO
+---------------------
+
+1. Nombre funcionalidad frontend: Escanear redes disponibles
+Tool MCP asociada: scan_wifi_networks
+Inputs:
+- interface
+- scan_seconds
+- band
+- include_hidden
+Salida normalized esperada:
+- interface
+- scan_seconds
+- band
+- include_hidden
+- networks_count
+- clients_count
+- networks[]
+- clients[]
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Descubre las redes Wi-Fi cercanas visibles desde la interfaz en modo monitor.
+- Resume beacons, BSSID, SSID, canal, banda, señal, protocolo y clientes observados.
+
+2. Nombre funcionalidad frontend: Perfil de la red objetivo
+Tool MCP asociada: inspect_target_network_profile
+Inputs:
+- interface
+- target_ssid
+- target_bssid
+- observation_seconds
+Salida normalized esperada:
+- target_identifier
+- ssid
+- bssid
+- channel
+- frequency_band
+- signal_samples[]
+- average_signal
+- security
+- privacy
+- cipher
+- auth
+- clients_count
+- hidden_network
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Observa una red concreta y la resume como objetivo principal del usuario.
+- Sirve como base para fijar "mi red" aunque el usuario aun no se haya conectado.
+
+3. Nombre funcionalidad frontend: Comprobar exposicion WPS
+Tool MCP asociada: detect_wps_exposure
+Inputs:
+- interface
+- target_ssid
+- target_bssid
+- observation_seconds
+Salida normalized esperada:
+- target_identifier
+- wps_detected
+- wps_version
+- locked_state
+- confidence
+- evidence[]
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Revisa si la red objetivo anuncia o deja ver indicios de WPS activo.
+- Muy util para una evaluacion inicial de endurecimiento.
+
+4. Nombre funcionalidad frontend: Escucha pasiva del entorno
+Tool MCP asociada: capture_beacon_baseline
+Inputs:
+- interface
+- observation_seconds
+- band
+Salida normalized esperada:
+- observation_seconds
+- band
+- observed_networks_count
+- observed_clients_count
+- channel_activity[]
+- top_networks[]
+- top_clients[]
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Genera una fotografia pasiva del entorno radio.
+- Ayuda a detectar saturacion, estabilidad y presencia recurrente de redes.
+
+5. Nombre funcionalidad frontend: Actividad inalambrica
+Tool MCP asociada: listen_wireless_traffic_metadata
+Inputs:
+- interface
+- observation_seconds
+- target_bssid
+Salida normalized esperada:
+- observation_seconds
+- target_bssid
+- frame_counts
+- activity_by_bssid[]
+- activity_by_station[]
+- management_frame_ratio
+- control_frame_ratio
+- data_frame_ratio
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Escucha trafico y resume metadatos sin centrarse en el contenido.
+- Sirve para entender si una red parece activa, silenciosa o congestionada.
+
+6. Nombre funcionalidad frontend: Mapa de canales
+Tool MCP asociada: map_wifi_channels
+Inputs:
+- interface
+- observation_seconds
+- band
+Salida normalized esperada:
+- band
+- channels[]
+- occupancy_score_by_channel[]
+- top_channels[]
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Resume en que canales hay mas actividad y densidad de redes.
+- Puede usarse para recomendar cambios de canal al usuario.
+
+7. Nombre funcionalidad frontend: Lista de clientes observados
+Tool MCP asociada: list_observed_wireless_clients
+Inputs:
+- interface
+- observation_seconds
+- target_bssid
+Salida normalized esperada:
+- target_bssid
+- clients_count
+- clients[]
+- associated_clients_count
+- unassociated_clients_count
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Muestra dispositivos observados por el aire, asociados o no a una red concreta.
+- Puede ayudar a estimar nivel de uso de la red objetivo.
+
+
+RECONOCIMIENTO ACTIVO
+---------------------
+
+8. Nombre funcionalidad frontend: Verificar disponibilidad de la red
+Tool MCP asociada: probe_target_network_presence
+Inputs:
+- interface
+- target_ssid
+- target_bssid
+- retries
+- interval_seconds
+Salida normalized esperada:
+- target_identifier
+- detected
+- detection_attempts
+- successful_detections
+- signal_history[]
+- channel_history[]
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Comprueba si la red aparece de forma estable o intermitente en una ventana temporal.
+
+9. Nombre funcionalidad frontend: Analizar ocupacion del canal
+Tool MCP asociada: measure_channel_occupancy
+Inputs:
+- interface
+- channel
+- band
+- observation_seconds
+Salida normalized esperada:
+- channel
+- band
+- occupancy_score
+- frames_observed
+- busiest_bssids[]
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Evalua lo cargado que esta un canal concreto y si puede afectar al rendimiento.
+
+10. Nombre funcionalidad frontend: Observar autenticaciones
+Tool MCP asociada: targeted_handshake_observation
+Inputs:
+- interface
+- target_ssid
+- target_bssid
+- observation_seconds
+Salida normalized esperada:
+- target_identifier
+- authentication_events_count
+- handshake_events_count
+- stations_involved[]
+- events[]
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Observa eventos de autenticacion y asociacion relacionados con la red objetivo.
+- Puede servir como señal de actividad real sobre esa red.
+
+11. Nombre funcionalidad frontend: Analizar estabilidad de beacon
+Tool MCP asociada: assess_beacon_stability
+Inputs:
+- interface
+- target_bssid
+- observation_seconds
+Salida normalized esperada:
+- target_bssid
+- beacon_intervals[]
+- missing_beacon_windows[]
+- stability_score
+- anomalies[]
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Evalua si el AP se comporta de forma estable o presenta emisiones irregulares.
+
+
+PRUEBAS DE SEGURIDAD SOBRE MI RED
+---------------------------------
+
+12. Nombre funcionalidad frontend: Evaluar protocolo de seguridad
+Tool MCP asociada: assess_auth_protocol_strength
+Inputs:
+- target_ssid
+- target_bssid
+- advertised_security
+- advertised_privacy
+- advertised_auth
+Salida normalized esperada:
+- target_identifier
+- detected_protocol
+- security_level
+- severity
+- findings[]
+- recommendations[]
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Clasifica el tipo de proteccion observada y estima su nivel de solidez.
+
+13. Nombre funcionalidad frontend: Evaluar riesgo por WPS
+Tool MCP asociada: assess_wps_risk
+Inputs:
+- wps_detected
+- locked_state
+- target_ssid
+- target_bssid
+Salida normalized esperada:
+- target_identifier
+- risk_score
+- severity
+- findings[]
+- recommendations[]
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Convierte la deteccion de WPS en una lectura de riesgo entendible para el usuario.
+
+14. Nombre funcionalidad frontend: Evaluar exposicion inalambrica
+Tool MCP asociada: assess_network_visibility_risk
+Inputs:
+- target_ssid
+- target_bssid
+- hidden_network
+- clients_count
+- channel
+- signal_strength
+Salida normalized esperada:
+- target_identifier
+- exposure_score
+- findings[]
+- recommendations[]
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Resume a nivel de riesgo la exposicion visible de la red en el entorno radio.
+
+15. Nombre funcionalidad frontend: Comprobar red oculta y consistencia del objetivo
+Tool MCP asociada: validate_hidden_network_posture
+Inputs:
+- target_ssid
+- target_bssid
+- hidden_network
+- observation_seconds
+Salida normalized esperada:
+- target_identifier
+- hidden_network
+- posture_summary
+- findings[]
+- recommendations[]
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Ayuda a explicar si ocultar el SSID aporta o no una mejora real de seguridad.
+
+
+ATAQUES ACTIVOS
+---------------
+
+16. Nombre funcionalidad frontend: Captura de handshake de la red objetivo
+Tool MCP asociada: capture_target_handshake
+Inputs:
+- interface
+- target_ssid
+- target_bssid
+- capture_seconds
+- output_format
+Salida normalized esperada:
+- target_identifier
+- handshake_captured
+- capture_file_path
+- packets_captured
+- stations_observed[]
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Intenta capturar material util para analisis posterior de autenticacion de la red objetivo.
+
+17. Nombre funcionalidad frontend: Deauthentication controlada
+Tool MCP asociada: run_deauth_test
+Inputs:
+- interface
+- target_bssid
+- target_station_mac
+- packet_count
+- attack_window_seconds
+Salida normalized esperada:
+- target_bssid
+- target_station_mac
+- packets_sent
+- observed_disconnect_events
+- test_status
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Simula una prueba de deautenticacion dirigida para comprobar resiliencia de clientes o AP.
+
+18. Nombre funcionalidad frontend: Disassociation controlada
+Tool MCP asociada: run_disassociation_test
+Inputs:
+- interface
+- target_bssid
+- target_station_mac
+- packet_count
+- attack_window_seconds
+Salida normalized esperada:
+- target_bssid
+- target_station_mac
+- packets_sent
+- observed_disconnect_events
+- test_status
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Variante orientada a evaluar comportamiento ante tramas de desasociacion.
+
+19. Nombre funcionalidad frontend: Prueba de jamming inalambrico
+Tool MCP asociada: run_wireless_jamming_test
+Inputs:
+- interface
+- channel
+- attack_window_seconds
+- intensity_profile
+Salida normalized esperada:
+- channel
+- attack_window_seconds
+- intensity_profile
+- interference_observed
+- test_status
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Funcionalidad agresiva para ensayos de denegacion o degradacion del medio radio.
+
+20. Nombre funcionalidad frontend: Prueba de DoS sobre la red objetivo
+Tool MCP asociada: run_wifi_dos_test
+Inputs:
+- interface
+- target_bssid
+- attack_mode
+- packet_count
+- attack_window_seconds
+Salida normalized esperada:
+- target_bssid
+- attack_mode
+- packets_sent
+- effect_observed
+- test_status
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Evalua el comportamiento de la red ante una prueba agresiva de denegacion de servicio.
+
+21. Nombre funcionalidad frontend: Captura para cracking offline
+Tool MCP asociada: collect_material_for_password_cracking
+Inputs:
+- interface
+- target_bssid
+- target_ssid
+- capture_seconds
+- output_format
+Salida normalized esperada:
+- target_identifier
+- material_collected
+- capture_file_path
+- file_format
+- packets_captured
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Recoge capturas y material de autenticacion para su uso posterior en analisis de robustez de contraseña.
+
+22. Nombre funcionalidad frontend: Evaluar robustez de contraseña por cracking offline
+Tool MCP asociada: run_password_cracking_assessment
+Inputs:
+- capture_file_path
+- attack_profile
+- wordlist_reference
+- rule_set
+- timeout_seconds
+Salida normalized esperada:
+- target_identifier
+- attack_profile
+- cracking_succeeded
+- elapsed_seconds
+- attempts_performed
+- recovered_password
+- severity
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Ejecuta una evaluacion de robustez de contraseña usando material previamente capturado.
+
+23. Nombre funcionalidad frontend: Prueba WEP cracking
+Tool MCP asociada: run_wep_cracking_assessment
+Inputs:
+- interface
+- target_bssid
+- capture_seconds
+- attack_profile
+Salida normalized esperada:
+- target_identifier
+- ivs_collected
+- cracking_succeeded
+- recovered_key
+- elapsed_seconds
+- severity
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Evalua redes WEP mediante una prueba de cracking especifica para ese protocolo.
+
+24. Nombre funcionalidad frontend: Prueba WPA/WPA2 cracking
+Tool MCP asociada: run_wpa_cracking_assessment
+Inputs:
+- capture_file_path
+- attack_profile
+- wordlist_reference
+- rule_set
+- timeout_seconds
+Salida normalized esperada:
+- target_identifier
+- cracking_succeeded
+- elapsed_seconds
+- attempts_performed
+- recovered_password
+- severity
+- completed_at
+Requiere estar conectado o no:
+- No conectado
+Descripcion:
+- Evalua si la contraseña de la red resistiria una prueba de cracking offline.
+
+
+CONECTADO
+=========
+
+RECONOCIMIENTO PASIVO
+---------------------
+
+25. Nombre funcionalidad frontend: Identificar el router
+Tool MCP asociada: discover_gateway_and_router_profile
+Inputs:
+- interface
+- timeout_seconds
+Salida normalized esperada:
+- local_ip
+- gateway_ip
+- gateway_mac
+- vendor_guess
+- hostname
+- open_ports[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Detecta el gateway y perfila el dispositivo que actua como router o punto de acceso principal.
+
+26. Nombre funcionalidad frontend: Ver dispositivos conectados
+Tool MCP asociada: discover_local_network_inventory
+Inputs:
+- interface
+- subnet
+- timeout_seconds
+Salida normalized esperada:
+- subnet
+- devices_count
+- devices[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Enumera dispositivos visibles en la red local para entender la superficie interna.
+
+27. Nombre funcionalidad frontend: Perfil web del router
+Tool MCP asociada: collect_router_http_headers
+Inputs:
+- router_url
+- timeout_seconds
+Salida normalized esperada:
+- router_url
+- status_code
+- headers
+- server_banner
+- title
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Obtiene metadatos HTTP del panel de administracion del router.
+
+28. Nombre funcionalidad frontend: Comprobar UPnP
+Tool MCP asociada: detect_upnp_exposure
+Inputs:
+- timeout_seconds
+- target_ip
+Salida normalized esperada:
+- upnp_detected
+- target_ip
+- discovered_services[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Detecta si hay servicios UPnP expuestos en la red local o en el router.
+
+29. Nombre funcionalidad frontend: Servicios de administracion
+Tool MCP asociada: detect_management_services
+Inputs:
+- target_ip
+- timeout_seconds
+- ports_profile
+Salida normalized esperada:
+- target_ip
+- services[]
+- insecure_services[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Enumera servicios de administracion como web, telnet, ssh o ftp y los clasifica.
+
+30. Nombre funcionalidad frontend: Analizar parametros DNS y DHCP
+Tool MCP asociada: inspect_dns_dhcp_configuration
+Inputs:
+- interface
+- timeout_seconds
+Salida normalized esperada:
+- gateway_ip
+- dhcp_server
+- dns_servers[]
+- lease_info
+- subnet
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Resume parametros de red local que pueden ser relevantes para seguridad y configuracion.
+
+
+RECONOCIMIENTO ACTIVO
+---------------------
+
+31. Nombre funcionalidad frontend: Analizar panel de administracion
+Tool MCP asociada: router_admin_panel_probe
+Inputs:
+- router_url
+- timeout_seconds
+Salida normalized esperada:
+- router_url
+- reachable
+- login_form_detected
+- auth_scheme
+- tls_enabled
+- panel_fingerprints[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Comprueba accesibilidad y caracteristicas generales del panel de administracion del router.
+
+32. Nombre funcionalidad frontend: Comprobar firmware
+Tool MCP asociada: firmware_version_discovery
+Inputs:
+- router_url
+- target_ip
+- timeout_seconds
+Salida normalized esperada:
+- target_identifier
+- vendor
+- model
+- firmware_version
+- discovery_method
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Intenta identificar modelo y version de firmware del router.
+
+33. Nombre funcionalidad frontend: Inspeccionar servicios UPnP
+Tool MCP asociada: upnp_enumeration
+Inputs:
+- target_ip
+- timeout_seconds
+Salida normalized esperada:
+- target_ip
+- services_count
+- services[]
+- port_mappings[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Enumera el detalle de servicios UPnP disponibles para valoracion posterior.
+
+34. Nombre funcionalidad frontend: Comprobar aislamiento entre clientes
+Tool MCP asociada: assess_client_isolation
+Inputs:
+- local_ip
+- subnet
+- timeout_seconds
+Salida normalized esperada:
+- local_ip
+- peer_visibility_detected
+- reachable_peers[]
+- isolation_score
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Revisa si un cliente puede ver o alcanzar a otros clientes de la misma red.
+
+35. Nombre funcionalidad frontend: Comprobar separacion de red de invitados
+Tool MCP asociada: assess_guest_network_separation
+Inputs:
+- local_ip
+- subnet
+- expected_isolation_mode
+- timeout_seconds
+Salida normalized esperada:
+- expected_isolation_mode
+- internal_resources_visible
+- reachable_targets[]
+- separation_score
+- findings[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Evalua si la red de invitados parece estar separada de la red interna principal.
+
+36. Nombre funcionalidad frontend: Escucha de trafico local
+Tool MCP asociada: listen_local_network_traffic
+Inputs:
+- interface
+- capture_seconds
+- filter_profile
+Salida normalized esperada:
+- interface
+- capture_seconds
+- packets_count
+- top_talkers[]
+- protocols[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Escucha trafico local para caracterizar actividad de red desde dentro.
+
+
+PRUEBAS DE SEGURIDAD SOBRE MI RED
+---------------------------------
+
+37. Nombre funcionalidad frontend: Comprobar credenciales por defecto
+Tool MCP asociada: check_default_router_credentials
+Inputs:
+- router_url
+- vendor
+- model
+- credential_profile
+- timeout_seconds
+Salida normalized esperada:
+- router_url
+- vendor
+- model
+- tested_profiles[]
+- default_credentials_accepted
+- severity
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Revisa si el panel del router acepta credenciales por defecto conocidas del fabricante o modelo.
+
+38. Nombre funcionalidad frontend: Evaluar seguridad del router
+Tool MCP asociada: assess_router_management_security
+Inputs:
+- router_url
+- target_ip
+- timeout_seconds
+Salida normalized esperada:
+- target_identifier
+- management_security_score
+- findings[]
+- insecure_services[]
+- recommendations[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Consolida una evaluacion general del estado de endurecimiento del router.
+
+39. Nombre funcionalidad frontend: Evaluar estado del firmware
+Tool MCP asociada: assess_firmware_security_posture
+Inputs:
+- vendor
+- model
+- firmware_version
+Salida normalized esperada:
+- vendor
+- model
+- firmware_version
+- support_status
+- posture_score
+- findings[]
+- recommendations[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Estima si la version de firmware parece antigua, sin soporte o de riesgo elevado.
+
+40. Nombre funcionalidad frontend: Evaluar riesgo UPnP
+Tool MCP asociada: check_upnp_risk
+Inputs:
+- target_ip
+- discovered_services[]
+- port_mappings[]
+Salida normalized esperada:
+- target_ip
+- upnp_risk_score
+- findings[]
+- recommendations[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Convierte la deteccion de UPnP en una valoracion de riesgo y accion recomendada.
+
+41. Nombre funcionalidad frontend: Revisar filtrado MAC
+Tool MCP asociada: check_mac_filtering_presence
+Inputs:
+- router_url
+- target_ip
+- timeout_seconds
+Salida normalized esperada:
+- target_identifier
+- mac_filtering_detected
+- filter_mode
+- findings[]
+- recommendations[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Comprueba si parece existir algun mecanismo de ACL o filtrado MAC en la configuracion observada.
+
+42. Nombre funcionalidad frontend: Evaluar confidencialidad dentro de la red
+Tool MCP asociada: assess_same_network_confidentiality_risk
+Inputs:
+- auth_protocol
+- cipher
+- local_capture_metadata
+- target_network_profile
+Salida normalized esperada:
+- target_identifier
+- confidentiality_risk_score
+- findings[]
+- attack_surface_summary
+- recommendations[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Evalua el riesgo de confidencialidad entre clientes que comparten la misma red.
+
+43. Nombre funcionalidad frontend: Comprobar robustez de contraseña configurada
+Tool MCP asociada: assess_wifi_password_policy
+Inputs:
+- wifi_password
+- password_source
+Salida normalized esperada:
+- password_length
+- complexity_score
+- estimated_strength
+- findings[]
+- recommendations[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Comprueba longitud y fortaleza estimada de la contraseña Wi-Fi si el usuario decide proporcionarla.
+
+44. Nombre funcionalidad frontend: Revisar configuracion por defecto del router
+Tool MCP asociada: assess_router_default_settings
+Inputs:
+- router_url
+- vendor
+- model
+- timeout_seconds
+Salida normalized esperada:
+- vendor
+- model
+- default_settings_detected[]
+- posture_score
+- findings[]
+- recommendations[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Busca indicadores de configuraciones basicas poco endurecidas o por defecto.
+
+
+ATAQUES ACTIVOS
+---------------
+
+45. Nombre funcionalidad frontend: Prueba de credenciales administrativas debiles
+Tool MCP asociada: run_router_login_weak_credential_test
+Inputs:
+- router_url
+- target_ip
+- credential_profile
+- timeout_seconds
+Salida normalized esperada:
+- target_identifier
+- tested_profiles[]
+- successful_profile
+- attempts_performed
+- severity
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Ejecuta una comprobacion controlada de credenciales debiles o previsibles sobre el panel del router.
+
+46. Nombre funcionalidad frontend: Prueba de spoofing MAC en red local
+Tool MCP asociada: run_mac_spoofing_assessment
+Inputs:
+- interface
+- target_mac
+- timeout_seconds
+Salida normalized esperada:
+- interface
+- target_mac
+- spoofing_attempted
+- access_changed
+- findings[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Evalua si el entorno reacciona o cambia de comportamiento ante una prueba de suplantacion MAC.
+
+47. Nombre funcionalidad frontend: Prueba de acceso lateral entre clientes
+Tool MCP asociada: run_lateral_access_assessment
+Inputs:
+- source_ip
+- target_range
+- protocol_profile
+- timeout_seconds
+Salida normalized esperada:
+- source_ip
+- targets_reached[]
+- exposed_services[]
+- lateral_access_score
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Comprueba si un cliente puede alcanzar recursos de otros clientes de la misma red.
+
+48. Nombre funcionalidad frontend: Prueba de enumeracion agresiva del router
+Tool MCP asociada: run_router_aggressive_enumeration
+Inputs:
+- target_ip
+- ports_profile
+- timeout_seconds
+Salida normalized esperada:
+- target_ip
+- open_ports[]
+- services[]
+- banners[]
+- findings[]
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Realiza una enumeracion mas intensiva del router o gateway para descubrir exposicion interna.
+
+49. Nombre funcionalidad frontend: Prueba de acceso no autorizado a servicios internos
+Tool MCP asociada: run_internal_service_access_assessment
+Inputs:
+- target_ip
+- service_profile
+- credential_profile
+- timeout_seconds
+Salida normalized esperada:
+- target_ip
+- tested_services[]
+- unauthorized_access_detected
+- findings[]
+- severity
+- completed_at
+Requiere estar conectado o no:
+- Conectado
+Descripcion:
+- Evalua si servicios internos aceptan accesos inseguros o con configuracion debil.
+
+
+FUNCIONALIDADES TRANSVERSALES
+=============================
+
+50. Nombre funcionalidad frontend: Fijar mi red objetivo
+Tool MCP asociada: set_target_network
+Inputs:
+- target_ssid
+- target_bssid
+- network_alias
+- network_password_optional
+Salida normalized esperada:
+- target_identifier
+- target_ssid
+- target_bssid
+- network_alias
+- target_saved
+- completed_at
+Requiere estar conectado o no:
+- No conectado o conectado
+Descripcion:
+- Guarda la red que el usuario considera su objetivo principal para futuras funcionalidades.
+
+51. Nombre funcionalidad frontend: Ver puntuacion global de seguridad
+Tool MCP asociada: compute_target_network_security_score
+Inputs:
+- target_identifier
+- evidence_sources[]
+- scoring_profile
+Salida normalized esperada:
+- target_identifier
+- global_security_score
+- category_scores
+- evidence_summary[]
+- recommendations[]
+- completed_at
+Requiere estar conectado o no:
+- No conectado o conectado
+Descripcion:
+- Consolida resultados de multiples funcionalidades para obtener una puntuacion global de seguridad.
+
+52. Nombre funcionalidad frontend: Historial de auditorias
+Tool MCP asociada: list_target_network_audit_history
+Inputs:
+- target_identifier
+- limit
+Salida normalized esperada:
+- target_identifier
+- audits_count
+- audits[]
+- completed_at
+Requiere estar conectado o no:
+- No conectado o conectado
+Descripcion:
+- Recupera auditorias previas de la red fijada para mostrar evolucion y comparativas.
+
+53. Nombre funcionalidad frontend: Resumen ejecutivo de hallazgos
+Tool MCP asociada: build_target_network_findings_summary
+Inputs:
+- target_identifier
+- evidence_sources[]
+Salida normalized esperada:
+- target_identifier
+- summary_text
+- critical_findings[]
+- medium_findings[]
+- low_findings[]
+- recommendations[]
+- completed_at
+Requiere estar conectado o no:
+- No conectado o conectado
+Descripcion:
+- Genera una vista resumida de hallazgos y acciones priorizadas para el dashboard o el chatbot.
+

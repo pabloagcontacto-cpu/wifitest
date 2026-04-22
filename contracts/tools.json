@@ -1,0 +1,191 @@
+{
+  "tools": {
+    "ping": {
+      "input": {
+        "message": {
+          "type": "string",
+          "mode": "fixed",
+          "required": false,
+          "default": "pong",
+          "allowed_values": ["ping", "pong", "hello"]
+        }
+      },
+      "output": {
+        "raw_text": "string",
+        "normalized": {
+          "message": "string",
+          "completed_at": "iso8601"
+        },
+        "nombreTool": "string",
+        "job_id": "string"
+      }
+    },
+    "scan_wifi_networks": {
+      "input": {
+        "interface": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": "wlan0"
+        },
+        "scan_seconds": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": "8"
+        },
+        "band": {
+          "type": "string",
+          "mode": "fixed",
+          "required": false,
+          "default": "all",
+          "allowed_values": ["all", "2.4", "5"]
+        },
+        "include_hidden": {
+          "type": "string",
+          "mode": "fixed",
+          "required": false,
+          "default": "true",
+          "allowed_values": ["true", "false"]
+        }
+      },
+      "output": {
+        "raw_text": "string",
+        "normalized": {
+          "interface": "string",
+          "scan_seconds": "number",
+          "band": "string",
+          "include_hidden": "boolean",
+          "networks_count": "number",
+          "clients_count": "number",
+          "networks": [
+            {
+              "bssid": "string",
+              "ssid": "string",
+              "is_hidden": "boolean",
+              "channel": "number",
+              "frequency_band": "string",
+              "signal": "number",
+              "security": "string",
+              "privacy": "string",
+              "cipher": "string",
+              "auth": "string",
+              "beacons": "number",
+              "clients_count": "number"
+            }
+          ],
+          "clients": [
+            {
+              "station_mac": "string",
+              "associated_bssid": "string|null",
+              "is_associated": "boolean",
+              "signal": "number",
+              "packets": "number",
+              "probed_essids": ["string"]
+            }
+          ]
+        },
+        "nombreTool": "string",
+        "job_id": "string"
+      }
+    },
+    "inspect_target_network_profile": {
+      "input": {
+        "interface": {
+          "type": "string",
+          "mode": "free",
+          "required": true,
+          "default": "wlan0"
+        },
+        "target_ssid": {
+          "type": "string",
+          "mode": "free",
+          "required": true,
+          "default": ""
+        },
+        "scan_seconds": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": "15"
+        }
+      },
+      "output": {
+        "raw_text": "string",
+        "normalized": {
+          "interface": "string",
+          "target_ssid": "string",
+          "scan_seconds": "number",
+          "target_present": "boolean",
+          "known_bssids": ["string"],
+          "networks": [
+            {
+              "bssid": "string",
+              "ssid": "string",
+              "is_hidden": "boolean",
+              "channel": "number",
+              "frequency_band": "string",
+              "signal": "number",
+              "security": "string",
+              "privacy": "string",
+              "cipher": "string",
+              "auth": "string",
+              "beacons": "number",
+              "clients_count": "number"
+            }
+          ],
+          "bands_seen": ["string"],
+          "channels_seen": ["number"],
+          "best_signal": "number|null",
+          "profile_confidence": "string",
+          "completed_at": "iso8601"
+        },
+        "nombreTool": "string",
+        "job_id": "string"
+      }
+    },
+    "detect_wps_exposure": {
+      "input": {
+        "interface": {
+          "type": "string",
+          "mode": "free",
+          "required": true,
+          "default": "wlan0mon"
+        },
+        "target_bssids": {
+          "type": "string",
+          "mode": "free",
+          "required": true,
+          "default": ""
+        },
+        "scan_seconds": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": "8"
+        }
+      },
+      "output": {
+        "raw_text": "string",
+        "normalized": {
+          "interface": "string",
+          "target_bssids": ["string"],
+          "matched_bssid": "string|null",
+          "target_ssid": "string|null",
+          "scan_seconds": "number",
+          "wps_detected": "boolean",
+          "wps_version": "string|null",
+          "wps_locked": "boolean|null",
+          "signal": "number|null",
+          "channel": "number|null",
+          "vendor": "string|null",
+          "confidence": "string",
+          "evidence": ["string"],
+          "completed_at": "iso8601"
+        },
+        "nombreTool": "string",
+        "job_id": "string"
+      }
+    }
+  }
+}

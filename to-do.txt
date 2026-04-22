@@ -1,0 +1,5 @@
+- Revisar fetch de contracts.js
+/ getState() no hace deep clone. en store.js
+- Informacion principal de red fijada lanza escaneos periodicos que sacan mas info a fondo de la red.
+- mejorar frontend en general
+- tildes en el frontend.

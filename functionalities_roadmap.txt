@@ -1,0 +1,434 @@
+WIFITEST - Roadmap de funcionalidades por fases
+===============================================
+
+Este fichero complementa a `functionalities_summary.txt` sin modificarlo.
+Su objetivo es priorizar las funcionalidades del proyecto en varias fases:
+
+- MVP: primera version util, demostrable y coherente
+- Fase 2: ampliacion clara del valor del producto
+- Fase 3: capacidades avanzadas
+- Laboratorio / agresivas: funcionalidades delicadas o de uso restringido
+
+
+MVP
+===
+
+Objetivo del MVP
+----------------
+
+Construir una primera version de WIFITEST que:
+
+- detecte redes cercanas
+- permita fijar una red objetivo
+- evalúe riesgos visibles sin estar conectado
+- permita algunas comprobaciones basicas una vez conectado
+- presente resultados claros en el dashboard
+
+El MVP debe ser:
+
+- estable
+- facil de explicar
+- util para una demo o defensa de TFM
+- suficientemente desacoplado entre frontend y MCP
+
+
+Funcionalidades MVP prioritarias
+--------------------------------
+
+1. Escanear redes disponibles
+Tool MCP asociada:
+- scan_wifi_networks
+Por que entra en MVP:
+- Es la base de todo el flujo.
+- Permite descubrir el entorno, elegir objetivo y validar la antena.
+
+2. Fijar mi red objetivo
+Tool MCP asociada:
+- set_target_network
+Por que entra en MVP:
+- Da continuidad a todo el producto.
+- Permite que el dashboard deje de ser "sobre todas las redes" y pase a ser "sobre mi red".
+
+3. Perfil de la red objetivo
+Tool MCP asociada:
+- inspect_target_network_profile
+Por que entra en MVP:
+- Resume una red concreta de forma clara y muy util para el usuario.
+
+4. Comprobar exposicion WPS
+Tool MCP asociada:
+- detect_wps_exposure
+Por que entra en MVP:
+- Es una comprobacion conocida, visible y facil de explicar.
+
+5. Evaluar protocolo de seguridad
+Tool MCP asociada:
+- assess_auth_protocol_strength
+Por que entra en MVP:
+- Convierte beacons y metadatos en una conclusion entendible.
+
+6. Evaluar riesgo por WPS
+Tool MCP asociada:
+- assess_wps_risk
+Por que entra en MVP:
+- Da una lectura de severidad y recomendacion accionable.
+
+7. Identificar el router
+Tool MCP asociada:
+- discover_gateway_and_router_profile
+Por que entra en MVP:
+- Es la puerta de entrada a toda la auditoria conectada.
+
+8. Comprobar UPnP
+Tool MCP asociada:
+- detect_upnp_exposure
+Por que entra en MVP:
+- Tiene valor real y es un hallazgo facil de entender.
+
+9. Servicios de administracion
+Tool MCP asociada:
+- detect_management_services
+Por que entra en MVP:
+- Permite detectar exposicion de web admin, telnet o ssh.
+
+10. Comprobar firmware
+Tool MCP asociada:
+- firmware_version_discovery
+Por que entra en MVP:
+- Aporta mucho valor práctico para el usuario y el TFM.
+
+11. Evaluar seguridad del router
+Tool MCP asociada:
+- assess_router_management_security
+Por que entra en MVP:
+- Empieza a consolidar findings en una conclusion útil.
+
+12. Comprobar credenciales por defecto
+Tool MCP asociada:
+- check_default_router_credentials
+Por que entra en MVP:
+- Es una comprobacion muy relevante y muy alineada con el objetivo del proyecto.
+
+
+Resultado esperado del MVP
+--------------------------
+
+Al terminar el MVP, WIFITEST deberia permitir:
+
+- descubrir redes cercanas
+- elegir una red concreta como objetivo
+- mostrar sus caracteristicas de seguridad anunciadas
+- detectar ciertos riesgos visibles sin conexion
+- realizar comprobaciones basicas conectadas sobre router y servicios
+- presentar hallazgos claros desde el dashboard
+
+
+FASE 2
+======
+
+Objetivo de la fase 2
+---------------------
+
+Ampliar el valor operativo del producto y mejorar el analisis interno una vez
+el usuario ya esta conectado a su red.
+
+
+Funcionalidades recomendadas para fase 2
+----------------------------------------
+
+1. Escucha pasiva del entorno
+Tool MCP asociada:
+- capture_beacon_baseline
+Motivo:
+- Añade contexto temporal y baseline del entorno radio.
+
+2. Actividad inalambrica
+Tool MCP asociada:
+- listen_wireless_traffic_metadata
+Motivo:
+- Mejora la comprension del uso real de la red objetivo.
+
+3. Mapa de canales
+Tool MCP asociada:
+- map_wifi_channels
+Motivo:
+- Permite recomendaciones de calidad y configuracion.
+
+4. Lista de clientes observados
+Tool MCP asociada:
+- list_observed_wireless_clients
+Motivo:
+- Aporta contexto sobre actividad y tamaño real de la red.
+
+5. Analizar ocupacion del canal
+Tool MCP asociada:
+- measure_channel_occupancy
+Motivo:
+- Extiende el analisis del entorno mas alla de un escaneo simple.
+
+6. Analizar parametros DNS y DHCP
+Tool MCP asociada:
+- inspect_dns_dhcp_configuration
+Motivo:
+- Mejora la auditoria interna de configuracion.
+
+7. Ver dispositivos conectados
+Tool MCP asociada:
+- discover_local_network_inventory
+Motivo:
+- Muy util para comercios y redes de clientes.
+
+8. Analizar panel de administracion
+Tool MCP asociada:
+- router_admin_panel_probe
+Motivo:
+- Permite una lectura mas rica del estado del router.
+
+9. Inspeccionar servicios UPnP
+Tool MCP asociada:
+- upnp_enumeration
+Motivo:
+- Convierte una deteccion simple en un analisis mas profundo.
+
+10. Evaluar riesgo UPnP
+Tool MCP asociada:
+- check_upnp_risk
+Motivo:
+- Ofrece una conclusion mas util al usuario.
+
+11. Revisar configuracion por defecto del router
+Tool MCP asociada:
+- assess_router_default_settings
+Motivo:
+- Encaja perfectamente con el objetivo de endurecimiento.
+
+12. Revisar filtrado MAC
+Tool MCP asociada:
+- check_mac_filtering_presence
+Motivo:
+- Permite explicar limites y falsas sensaciones de seguridad.
+
+13. Comprobar aislamiento entre clientes
+Tool MCP asociada:
+- assess_client_isolation
+Motivo:
+- Muy relevante para redes de invitados y comercios.
+
+14. Comprobar separacion de red de invitados
+Tool MCP asociada:
+- assess_guest_network_separation
+Motivo:
+- Muy alineado con el uso real del proyecto.
+
+15. Comprobar robustez de contraseña configurada
+Tool MCP asociada:
+- assess_wifi_password_policy
+Motivo:
+- Aporta recomendaciones practicas si el usuario decide aportar su clave.
+
+
+Resultado esperado de fase 2
+----------------------------
+
+Al finalizar esta fase, el producto deberia:
+
+- comprender mejor el entorno radio
+- auditar mejor la red interna
+- analizar el router con mas detalle
+- evaluar segmentacion, aislamiento y configuracion
+
+
+FASE 3
+======
+
+Objetivo de la fase 3
+---------------------
+
+Pasar de herramientas sueltas a una plataforma mas completa, con continuidad,
+historial y valor acumulado.
+
+
+Funcionalidades recomendadas para fase 3
+----------------------------------------
+
+1. Ver puntuacion global de seguridad
+Tool MCP asociada:
+- compute_target_network_security_score
+Motivo:
+- Consolida el producto como plataforma guiada, no solo como lanzador de tools.
+
+2. Historial de auditorias
+Tool MCP asociada:
+- list_target_network_audit_history
+Motivo:
+- Permite comparar resultados a lo largo del tiempo.
+
+3. Resumen ejecutivo de hallazgos
+Tool MCP asociada:
+- build_target_network_findings_summary
+Motivo:
+- Muy util para dashboard, informes y chatbot.
+
+4. Observar autenticaciones
+Tool MCP asociada:
+- targeted_handshake_observation
+Motivo:
+- Mejora el analisis dirigido de una red concreta.
+
+5. Analizar estabilidad de beacon
+Tool MCP asociada:
+- assess_beacon_stability
+Motivo:
+- Añade profundidad al perfilado inalambrico.
+
+6. Evaluar exposicion inalambrica
+Tool MCP asociada:
+- assess_network_visibility_risk
+Motivo:
+- Complementa la lectura global de riesgo de la red objetivo.
+
+7. Comprobar red oculta y consistencia del objetivo
+Tool MCP asociada:
+- validate_hidden_network_posture
+Motivo:
+- Ayuda a contextualizar una decision comun de configuracion.
+
+8. Evaluar estado del firmware
+Tool MCP asociada:
+- assess_firmware_security_posture
+Motivo:
+- Convierte version detectada en conclusion accionable.
+
+9. Evaluar confidencialidad dentro de la red
+Tool MCP asociada:
+- assess_same_network_confidentiality_risk
+Motivo:
+- Da profundidad tecnica a la auditoria conectada.
+
+
+Resultado esperado de fase 3
+----------------------------
+
+Al finalizar esta fase, WIFITEST deberia:
+
+- ofrecer continuidad entre sesiones
+- agregar resultados de multiples pruebas
+- resumir y puntuar la seguridad de una red objetivo
+- acercarse a la experiencia completa de producto
+
+
+LABORATORIO / FUNCIONALIDADES AGRESIVAS
+=======================================
+
+Objetivo de esta fase
+---------------------
+
+Reunir pruebas avanzadas o agresivas que pueden resultar utiles en entornos
+controlados, pero que no deberian formar parte del flujo principal del producto
+desde el inicio.
+
+
+Funcionalidades agresivas candidatas
+------------------------------------
+
+1. Captura de handshake de la red objetivo
+Tool MCP asociada:
+- capture_target_handshake
+
+2. Deauthentication controlada
+Tool MCP asociada:
+- run_deauth_test
+
+3. Disassociation controlada
+Tool MCP asociada:
+- run_disassociation_test
+
+4. Prueba de jamming inalambrico
+Tool MCP asociada:
+- run_wireless_jamming_test
+
+5. Prueba de DoS sobre la red objetivo
+Tool MCP asociada:
+- run_wifi_dos_test
+
+6. Captura para cracking offline
+Tool MCP asociada:
+- collect_material_for_password_cracking
+
+7. Evaluar robustez de contraseña por cracking offline
+Tool MCP asociada:
+- run_password_cracking_assessment
+
+8. Prueba WEP cracking
+Tool MCP asociada:
+- run_wep_cracking_assessment
+
+9. Prueba WPA/WPA2 cracking
+Tool MCP asociada:
+- run_wpa_cracking_assessment
+
+10. Prueba de credenciales administrativas debiles
+Tool MCP asociada:
+- run_router_login_weak_credential_test
+
+11. Prueba de spoofing MAC en red local
+Tool MCP asociada:
+- run_mac_spoofing_assessment
+
+12. Prueba de acceso lateral entre clientes
+Tool MCP asociada:
+- run_lateral_access_assessment
+
+13. Prueba de enumeracion agresiva del router
+Tool MCP asociada:
+- run_router_aggressive_enumeration
+
+14. Prueba de acceso no autorizado a servicios internos
+Tool MCP asociada:
+- run_internal_service_access_assessment
+
+
+Recomendacion de producto sobre estas funcionalidades
+-----------------------------------------------------
+
+Estas capacidades:
+
+- deberian ir fuera del dashboard principal
+- podrian vivir en un "modo laboratorio"
+- deberian estar claramente separadas de las funciones guiadas normales
+- conviene no priorizarlas antes de cerrar bien MVP y fase 2
+
+
+ORDEN DE IMPLEMENTACION RECOMENDADO
+===================================
+
+Orden corto y pragmatico
+------------------------
+
+1. scan_wifi_networks
+2. set_target_network
+3. inspect_target_network_profile
+4. detect_wps_exposure
+5. assess_auth_protocol_strength
+6. discover_gateway_and_router_profile
+7. detect_upnp_exposure
+8. detect_management_services
+9. firmware_version_discovery
+10. check_default_router_credentials
+11. assess_router_management_security
+12. discover_local_network_inventory
+13. assess_client_isolation
+14. assess_guest_network_separation
+15. compute_target_network_security_score
+
+
+Conclusion
+==========
+
+La estrategia recomendada es:
+
+- primero cerrar un MVP solido, demostrable y centrado en reconocimiento y evaluacion
+- despues ampliar auditoria conectada y valor operativo real
+- mas adelante introducir puntuacion, historial y continuidad
+- dejar las capacidades agresivas para una fase separada o modo laboratorio
+

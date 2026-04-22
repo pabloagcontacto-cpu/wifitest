@@ -1,0 +1,120 @@
+# WIFITEST MCP
+
+Servidor MCP en Python para `WIFITEST`, preparado para ejecutarse por `streamable-http` local y despachar tools asincronas mediante Redis.
+
+## SDK y version
+
+Se mantiene el SDK oficial `mcp` en la linea estable `v1.x`, fijado a `1.27.0`. La rama `main` del repositorio oficial corresponde a la v2 pre-alpha, asi que para esta base se usa la release estable mas reciente consultada.
+
+## Arquitectura
+
+La estructura sigue el patron que has descrito:
+
+- `server.py`: define las tools MCP y el recurso `job://{job_id}`. Cada tool serializa argumentos, crea un `job_id`, encola el trabajo en Redis y devuelve el identificador al cliente.
+- `serializer.py`: contiene una funcion serializadora por tool con el patron `<tool_name>_serializer`, ademas de la funcion `serializer(tool_name, raw_args)` que hace el dispatch dinamico.
+- `worker.py`: consume jobs desde Redis y resuelve el ejecutor con el patron `<tool_name>_execute`.
+- `redis_queue.py`: encapsula la cola y el almacenamiento de estado/resultados de jobs en Redis.
+- `tools/helpers.py`: helpers comunes reutilizables por las tools.
+- `tools/ping.py`: ejemplo de tool implementada con la arquitectura completa.
+
+## Concurrencia de workers
+
+La base queda preparada para varios workers en paralelo usando Redis Streams y Consumer Groups:
+
+- varios procesos `wifitest-worker` pueden leer la misma cola
+- Redis asigna cada mensaje a un consumidor del grupo
+- eso evita que dos workers procesen el mismo job a la vez en el flujo normal
+
+No he anadido todavia recuperacion de mensajes pendientes, reintentos ni timeouts de jobs colgados, pero la base ya es correcta para evolucionar a 3 o 4 workers concurrentes sin lock manual inicial.
+
+## Tool disponible
+
+Solo queda `ping`, pero ya funciona con el flujo completo:
+
+1. el cliente llama a la tool `ping`
+2. `server.py` serializa argumentos con `serializer.py`
+3. se crea un job en Redis y se encola
+4. `worker.py` lo consume
+5. `tools/ping.py` ejecuta `ping_execute(input_data)`
+6. el resultado queda disponible en `job://{job_id}`
+
+## Variables de entorno
+
+- `REDIS_URL`: URL de conexion a Redis. Por defecto `redis://localhost:6379/0`
+- `MCP_WORKER_NAME`: nombre del consumidor Redis para el worker. Por defecto `worker-1`
+
+## Instalacion
+
+```bash
+cd /home/pablo/Documentos/Proyectos/TFM/wifitest/backend/MCP
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m ensurepip --upgrade
+python3 -m pip install --upgrade pip
+python3 -m pip install -e .
+```
+
+## Ejecucion
+
+Arrancar un worker:
+
+```bash
+cd /home/pablo/Documentos/Proyectos/TFM/wifitest/backend/MCP
+source .venv/bin/activate
+MCP_WORKER_NAME=worker-1 wifitest-worker
+```
+
+En otra terminal, arrancar el servidor MCP por `streamable-http` local:
+
+```bash
+cd /home/pablo/Documentos/Proyectos/TFM/wifitest/backend/MCP
+source .venv/bin/activate
+wifitest-mcp
+```
+
+Por defecto quedara escuchando en:
+
+```text
+http://127.0.0.1:8000/mcp
+```
+
+Para escalar a varios workers:
+
+```bash
+MCP_WORKER_NAME=worker-2 wifitest-worker
+MCP_WORKER_NAME=worker-3 wifitest-worker
+```
+
+## Polling del resultado
+
+La llamada a `ping` devuelve algo con esta forma:
+
+```json
+{
+  "job_id": "4d3c2b1a-...",
+  "tool_name": "ping",
+  "status": "queued",
+  "resource": "job://4d3c2b1a-..."
+}
+```
+
+Despues, el cliente puede consultar el recurso:
+
+```text
+job://4d3c2b1a-...
+```
+
+Y recibira un estado como `queued`, `running`, `completed` o `failed`, junto con el `result` o el `error`.
+
+## Variables de entorno del servidor HTTP local
+
+- `MCP_HOST`: host de escucha del servidor MCP. Por defecto `127.0.0.1`
+- `MCP_PORT`: puerto de escucha del servidor MCP. Por defecto `8000`
+- `MCP_STREAMABLE_HTTP_PATH`: path HTTP del endpoint MCP. Por defecto `/mcp`
+- `MCP_CORS_ALLOW_ORIGINS`: origenes permitidos para CORS. Por defecto `*`
+
+Ejemplo:
+
+```bash
+MCP_HOST=127.0.0.1 MCP_PORT=8080 MCP_STREAMABLE_HTTP_PATH=/mcp wifitest-mcp
+```
