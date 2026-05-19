@@ -185,6 +185,70 @@ def detect_wps_exposure_serializer(raw_args: dict[str, Any]) -> dict[str, Any]:
     return normalized_args
 
 
+def detect_upnp_exposure_serializer(raw_args: dict[str, Any]) -> dict[str, Any]:
+    """Normalize and validate the input for the UPnP exposure job."""
+    normalized_args = normalize_and_validate_contract_args("detect_upnp_exposure", raw_args)
+
+    interface = str(normalized_args["interface"]).strip()
+    if interface == "":
+        raise ValueError("The 'interface' argument cannot be empty.")
+
+    gateway_ip = str(normalized_args["gateway_ip"]).strip()
+    if gateway_ip != "":
+        ip_pattern = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+        if not ip_pattern.match(gateway_ip):
+            raise ValueError("The 'gateway_ip' argument must be a valid IPv4 address.")
+
+    timeout_seconds_text = str(normalized_args["timeout_seconds"]).strip()
+    try:
+        timeout_seconds_value = int(timeout_seconds_text)
+    except ValueError as exc:
+        raise ValueError("The 'timeout_seconds' argument must be a valid integer.") from exc
+
+    if timeout_seconds_value <= 0:
+        raise ValueError("The 'timeout_seconds' argument must be greater than 0.")
+
+    if timeout_seconds_value > 15:
+        raise ValueError("The 'timeout_seconds' argument must be 15 or lower.")
+
+    normalized_args["interface"] = interface
+    normalized_args["gateway_ip"] = gateway_ip
+    normalized_args["timeout_seconds"] = str(timeout_seconds_value)
+    return normalized_args
+
+
+def detect_management_services_serializer(raw_args: dict[str, Any]) -> dict[str, Any]:
+    """Normalize and validate the input for the management services job."""
+    normalized_args = normalize_and_validate_contract_args("detect_management_services", raw_args)
+
+    interface = str(normalized_args["interface"]).strip()
+    if interface == "":
+        raise ValueError("The 'interface' argument cannot be empty.")
+
+    gateway_ip = str(normalized_args["gateway_ip"]).strip()
+    if gateway_ip != "":
+        ip_pattern = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+        if not ip_pattern.match(gateway_ip):
+            raise ValueError("The 'gateway_ip' argument must be a valid IPv4 address.")
+
+    timeout_seconds_text = str(normalized_args["timeout_seconds"]).strip()
+    try:
+        timeout_seconds_value = int(timeout_seconds_text)
+    except ValueError as exc:
+        raise ValueError("The 'timeout_seconds' argument must be a valid integer.") from exc
+
+    if timeout_seconds_value <= 0:
+        raise ValueError("The 'timeout_seconds' argument must be greater than 0.")
+
+    if timeout_seconds_value > 10:
+        raise ValueError("The 'timeout_seconds' argument must be 10 or lower.")
+
+    normalized_args["interface"] = interface
+    normalized_args["gateway_ip"] = gateway_ip
+    normalized_args["timeout_seconds"] = str(timeout_seconds_value)
+    return normalized_args
+
+
 def connect_to_target_network_serializer(raw_args: dict[str, Any]) -> dict[str, Any]:
     """Normalize and validate the input for the Wi-Fi connection job."""
     normalized_args = normalize_and_validate_contract_args("connect_to_target_network", raw_args)

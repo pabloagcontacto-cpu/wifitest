@@ -218,6 +218,48 @@ def detect_wps_exposure(
 
 
 @mcp.tool()
+def detect_upnp_exposure(
+    interface: str | None = None,
+    gateway_ip: str | None = None,
+    timeout_seconds: str | None = None,
+) -> dict[str, Any]:
+    """Detect whether the connected router exposes UPnP or IGD services on the local network.
+
+    This tool is asynchronous. It returns a job_id that must be used later to
+    poll the final result from the corresponding job resource.
+    """
+    return procesarTool(
+        "detect_upnp_exposure",
+        {
+            "interface": interface,
+            "gateway_ip": gateway_ip,
+            "timeout_seconds": timeout_seconds,
+        },
+    )
+
+
+@mcp.tool()
+def detect_management_services(
+    interface: str | None = None,
+    gateway_ip: str | None = None,
+    timeout_seconds: str | None = None,
+) -> dict[str, Any]:
+    """Detect common management services exposed by the connected router.
+
+    This tool is asynchronous. It returns a job_id that must be used later to
+    poll the final result from the corresponding job resource.
+    """
+    return procesarTool(
+        "detect_management_services",
+        {
+            "interface": interface,
+            "gateway_ip": gateway_ip,
+            "timeout_seconds": timeout_seconds,
+        },
+    )
+
+
+@mcp.tool()
 def connect_to_target_network(
     interface: str | None = None,
     ssid: str | None = None,

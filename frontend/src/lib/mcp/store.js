@@ -155,3 +155,14 @@ export function clearTargetNetwork() {
   persistTargetNetwork();
   emitChange();
 }
+
+
+export function clearApplicationState() {
+  state.jobs = {};
+  state.activeJobIds = [];
+  state.completedJobIds = [];
+  state.failedJobIds = [];
+  state.targetNetwork = null;
+  persistTargetNetwork();
+  emitChange();
+}

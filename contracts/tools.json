@@ -187,6 +187,112 @@
         "job_id": "string"
       }
     },
+    "detect_upnp_exposure": {
+      "input": {
+        "interface": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": "wlan0"
+        },
+        "gateway_ip": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": ""
+        },
+        "timeout_seconds": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": "4"
+        }
+      },
+      "output": {
+        "raw_text": "string",
+        "normalized": {
+          "interface": "string",
+          "resolved_interface": "string",
+          "required_mode": "string",
+          "gateway_ip": "string|null",
+          "target_matches_gateway": "boolean|null",
+          "upnp_detected": "boolean",
+          "igd_detected": "boolean",
+          "ssdp_responses_count": "number",
+          "matching_router_response": "boolean",
+          "location": "string|null",
+          "server": "string|null",
+          "usn": "string|null",
+          "st": "string|null",
+          "device_description_retrieved": "boolean",
+          "device_friendly_name": "string|null",
+          "device_manufacturer": "string|null",
+          "device_model": "string|null",
+          "wan_ip_connection_service": "boolean|null",
+          "port_mapping_capable": "boolean|null",
+          "confidence": "string",
+          "evidence": ["string"],
+          "completed_at": "iso8601"
+        },
+        "nombreTool": "string",
+        "job_id": "string"
+      }
+    },
+    "detect_management_services": {
+      "input": {
+        "interface": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": "wlan0"
+        },
+        "gateway_ip": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": ""
+        },
+        "timeout_seconds": {
+          "type": "string",
+          "mode": "free",
+          "required": false,
+          "default": "3"
+        }
+      },
+      "output": {
+        "raw_text": "string",
+        "normalized": {
+          "interface": "string",
+          "resolved_interface": "string",
+          "required_mode": "string",
+          "gateway_ip": "string|null",
+          "services_detected_count": "number",
+          "web_admin_detected": "boolean",
+          "ssh_detected": "boolean",
+          "telnet_detected": "boolean",
+          "management_exposure_level": "string",
+          "services": [
+            {
+              "service_name": "string",
+              "port": "number",
+              "protocol": "string",
+              "reachable": "boolean",
+              "banner": "string|null",
+              "requires_auth": "boolean|null",
+              "auth_type": "string|null",
+              "risk_level": "string",
+              "url": "string|null",
+              "title": "string|null",
+              "server": "string|null"
+            }
+          ],
+          "recommendations": ["string"],
+          "completed_at": "iso8601"
+        },
+        "nombreTool": "string",
+        "job_id": "string"
+      }
+    },
     "connect_to_target_network": {
       "input": {
         "interface": {

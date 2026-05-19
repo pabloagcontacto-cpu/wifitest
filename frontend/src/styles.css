@@ -257,6 +257,22 @@ h1 {
   font-size: 2rem;
 }
 
+.metric-card strong.metric-score--good {
+  color: #d9fff0;
+}
+
+.metric-card strong.metric-score--medium {
+  color: #ffe9b8;
+}
+
+.metric-card strong.metric-score--bad {
+  color: #ffd8d8;
+}
+
+.metric-card strong.metric-score--muted {
+  color: #dcecff;
+}
+
 .metric-card p,
 .surface-card p {
   margin-top: 10px;
@@ -1148,6 +1164,13 @@ h1 {
 
 .feature-list li + li {
   margin-top: 10px;
+}
+
+.workspace-actions {
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .chat-layout {

@@ -74,6 +74,16 @@
                 <p>Procesos en curso y comprobaciones abiertas en este momento.</p>
               </article>
               <article class="metric-card">
+                <span class="metric-label">Puntuacion global</span>
+                <strong id="metric-security-score">-</strong>
+                <p>Nivel resumido de seguridad de la red objetivo segun las comprobaciones ya ejecutadas.</p>
+              </article>
+              <article class="metric-card">
+                <span class="metric-label">Cobertura</span>
+                <strong id="metric-security-coverage">-</strong>
+                <p>Porcentaje de factores de seguridad que ya han sido evaluados sobre la red fijada.</p>
+              </article>
+              <article class="metric-card">
                 <span class="metric-label">Tools cargadas</span>
                 <strong id="metric-tools-count">0</strong>
                 <p>Herramientas disponibles para lanzar desde la interfaz.</p>
@@ -191,39 +201,7 @@
             </div>
           </div>
 
-          <div class="content-grid">
-            <article class="surface-card">
-              <div class="card-heading">
-                <h3>Datos de red guardados</h3>
-                <span class="pill">Configuracion</span>
-              </div>
-              <p>
-                Aqui podras guardar la informacion habitual de la red para tener
-                una experiencia mas rapida y personalizada.
-              </p>
-              <ul class="feature-list">
-                <li>SSID principal o red de invitados</li>
-                <li>Notas sobre el entorno o el comercio</li>
-                <li>Configuracion asociada a futuras revisiones</li>
-              </ul>
-            </article>
-
-            <article class="surface-card">
-              <div class="card-heading">
-                <h3>Historial y vulnerabilidades</h3>
-                <span class="pill">Seguimiento</span>
-              </div>
-              <p>
-                Esta vista te ayudara a revisar escaneos anteriores, comparar
-                resultados y seguir la evolucion de la seguridad de la red.
-              </p>
-              <ul class="feature-list">
-                <li>Linea temporal de revisiones</li>
-                <li>Ultimos riesgos detectados</li>
-                <li>Medidas pendientes o aplicadas</li>
-              </ul>
-            </article>
-          </div>
+          <div id="workspace-content" class="dashboard-layout"></div>
         </section>
       </section>
     </main>

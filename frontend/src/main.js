@@ -1,5 +1,6 @@
 import { executeTool, stopAllPolling, stopPolling } from "./lib/mcp/jobs.js";
 import {
+  clearApplicationState,
   clearTargetNetwork,
   getState,
   setTargetNetwork,
@@ -7,6 +8,7 @@ import {
   subscribe,
   updateTargetNetwork,
 } from "./lib/mcp/store.js";
+import { computeTargetSecurityScore } from "./lib/security/scoring.js";
 import { discoverTools } from "./lib/mcp/tools.js";
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -23,8 +25,11 @@ window.addEventListener("DOMContentLoaded", () => {
   const scanNetworksFeature = document.querySelector("#scan-networks-feature");
   const jobsList = document.querySelector("#jobs-list");
   const resultViewer = document.querySelector("#result-viewer");
+  const workspaceContent = document.querySelector("#workspace-content");
   const dashboardResultCard = document.querySelector("#dashboard-result-card");
   const activeJobsMetric = document.querySelector("#metric-active-jobs");
+  const securityScoreMetric = document.querySelector("#metric-security-score");
+  const securityCoverageMetric = document.querySelector("#metric-security-coverage");
   const toolsCountMetric = document.querySelector("#metric-tools-count");
   const isTauriRuntime = Boolean(window.__TAURI__);
 
@@ -226,6 +231,90 @@ window.addEventListener("DOMContentLoaded", () => {
     return { tone: "muted", label: "No conectado" };
   }
 
+  function formatSecurityScore(scoreData) {
+    if (!scoreData) {
+      return "-";
+    }
+    return `${scoreData.score.toFixed(1)} / ${scoreData.scoreMax}`;
+  }
+
+  function renderSecurityScoreSection(scoreData, title = "Resumen de seguridad global") {
+    if (!scoreData) {
+      return "";
+    }
+
+    const findingsMarkup = scoreData.findings.length > 0
+      ? scoreData.findings.slice(0, 3).map((finding) => `<li>${escapeHtml(`${finding.title}: ${finding.summary}`)}</li>`).join("")
+      : `<li>No se han detectado hallazgos graves en los factores ya revisados.</li>`;
+
+    const positivesMarkup = scoreData.positiveSignals.length > 0
+      ? scoreData.positiveSignals.slice(0, 3).map((item) => `<li>${escapeHtml(`${item.title}: ${item.summary}`)}</li>`).join("")
+      : `<li>Todavia no hay suficientes señales positivas confirmadas para destacarlas.</li>`;
+
+    const pendingMarkup = scoreData.pendingChecks.length > 0
+      ? scoreData.pendingChecks.slice(0, 4).map((item) => `<li>${escapeHtml(item.summary)}</li>`).join("")
+      : `<li>No quedan comprobaciones pendientes dentro del motor actual.</li>`;
+
+    const recommendationsMarkup = scoreData.recommendations.length > 0
+      ? scoreData.recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")
+      : `<li>La red ya tiene una base razonable en los factores revisados.</li>`;
+
+    return `
+      <section class="profile-panel">
+        <div class="feature-subheading">
+          <h4>${escapeHtml(title)}</h4>
+          <span class="signal-pill signal-pill--${escapeHtml(scoreData.tone)}">${escapeHtml(scoreData.headline)}</span>
+        </div>
+        <div class="security-assessment-layout">
+          <div class="security-assessment-grid">
+            <article class="profile-highlight-card">
+              <span>Puntuacion</span>
+              <strong>${escapeHtml(formatSecurityScore(scoreData))}</strong>
+              <small>${escapeHtml(scoreData.isProvisional ? "Resultado provisional" : "Resultado consolidado")}</small>
+            </article>
+            <article class="profile-highlight-card">
+              <span>Cobertura</span>
+              <strong>${escapeHtml(`${scoreData.coveragePercent}%`)}</strong>
+              <small>${escapeHtml(`${scoreData.assessedRulesCount} de ${scoreData.totalRulesCount} factores evaluados`)}</small>
+            </article>
+          </div>
+          <div class="security-assessment-summary">
+            <p>${escapeHtml(scoreData.summary)}</p>
+            <p>${escapeHtml(scoreData.updatedAt ? `Ultima actualizacion considerada: ${new Date(scoreData.updatedAt).toLocaleString("es-ES")}` : "Todavia no hay una referencia temporal consolidada para esta puntuacion.")}</p>
+          </div>
+          <div class="security-assessment-grid">
+            <article class="profile-highlight-card">
+              <span>Factores que mas bajan la nota</span>
+              <ul class="assessment-list">
+                ${findingsMarkup}
+              </ul>
+            </article>
+            <article class="profile-highlight-card">
+              <span>Senales favorables</span>
+              <ul class="assessment-list">
+                ${positivesMarkup}
+              </ul>
+            </article>
+          </div>
+          <div class="security-assessment-grid">
+            <article class="profile-highlight-card">
+              <span>Pruebas pendientes</span>
+              <ul class="assessment-list">
+                ${pendingMarkup}
+              </ul>
+            </article>
+            <article class="profile-highlight-card">
+              <span>Siguientes pasos</span>
+              <ul class="assessment-list">
+                ${recommendationsMarkup}
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
   function getSignalTone(signal) {
     const signalValue = Number(signal);
 
@@ -346,6 +435,101 @@ window.addEventListener("DOMContentLoaded", () => {
     };
 
     return evidence.map((item) => labels[item] ?? item).join(", ");
+  }
+
+  function assessUpnpRisk(upnpResult) {
+    if (!upnpResult?.normalized) {
+      return {
+        tone: "muted",
+        headline: "Sin analisis UPnP",
+        summary: "Todavia no se ha ejecutado la comprobacion UPnP sobre el router conectado.",
+        recommendations: [
+          "Lanza la comprobacion para saber si el router permite servicios UPnP dentro de la red local.",
+        ],
+      };
+    }
+
+    const normalized = upnpResult.normalized;
+    if (!normalized.upnp_detected) {
+      return {
+        tone: "good",
+        headline: "No detectado",
+        summary: "No se han observado respuestas UPnP/SSDP del router durante la comprobacion actual.",
+        recommendations: [
+          "Si realmente no se utiliza, este resultado es positivo porque reduce una superficie de exposicion innecesaria.",
+          "Si quieres mas certeza, puedes repetir la comprobacion mas adelante tras reiniciar el router o revisar manualmente el panel de administracion.",
+        ],
+      };
+    }
+
+    if (normalized.port_mapping_capable || normalized.wan_ip_connection_service) {
+      return {
+        tone: "bad",
+        headline: "UPnP activo con riesgo",
+        summary: "El router parece exponer servicios UPnP/IGD que podrian facilitar aperturas automaticas de puertos desde dispositivos internos.",
+        recommendations: [
+          "Si no se utiliza y no es necesario, seria recomendable desactivarlo.",
+          "Revisar si algun dispositivo del negocio depende realmente de UPnP antes de tocarlo.",
+        ],
+      };
+    }
+
+    return {
+      tone: "medium",
+      headline: "UPnP detectado",
+      summary: "Se ha visto actividad o identificacion UPnP, aunque todavia no hay evidencia fuerte de capacidades de mapeo de puertos.",
+      recommendations: [
+        "Conviene revisar el panel del router para confirmar si UPnP esta habilitado.",
+      ],
+    };
+  }
+
+  function assessManagementServicesRisk(servicesResult) {
+    if (!servicesResult?.normalized) {
+        return {
+          tone: "muted",
+          headline: "Sin analisis",
+          summary: "Todavia no se han evaluado los servicios de administracion del router conectado.",
+          recommendations: [
+          "Lanza esta comprobacion para detectar panel web, SSH, Telnet, FTP, SNMP, TR-069 y otros puertos tipicos de gestion.",
+        ],
+      };
+    }
+
+    const normalized = servicesResult.normalized;
+    if (normalized.services_detected_count === 0) {
+      return {
+        tone: "good",
+        headline: "Exposicion baja",
+        summary: "No se han detectado servicios tipicos de administracion abiertos en los puertos revisados durante esta comprobacion.",
+        recommendations: normalized.recommendations ?? [],
+      };
+    }
+
+    if (normalized.telnet_detected) {
+      return {
+        tone: "bad",
+        headline: "Servicio sensible detectado",
+        summary: "Se ha detectado Telnet, que suele considerarse una mala practica por ser un protocolo antiguo y sin cifrado.",
+        recommendations: normalized.recommendations ?? [],
+      };
+    }
+
+    if (normalized.web_admin_detected || normalized.ssh_detected) {
+      return {
+        tone: "medium",
+        headline: "Servicios de gestion activos",
+        summary: "El router expone servicios de administracion accesibles desde la red local. No es necesariamente malo, pero conviene revisar cuales son realmente necesarios.",
+        recommendations: normalized.recommendations ?? [],
+      };
+    }
+
+    return {
+      tone: "muted",
+      headline: "Exposicion limitada",
+      summary: "Se ha detectado alguna superficie de gestion, pero no parece especialmente amplia en esta primera revision.",
+      recommendations: normalized.recommendations ?? [],
+    };
   }
 
   function getClientsAssessment(clientsCount) {
@@ -739,6 +923,54 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function syncTargetUpnpFromJobs(state) {
+    if (!state.targetNetwork) {
+      return;
+    }
+
+    const latestUpnpJob = getLatestJobByTool(state, "detect_upnp_exposure");
+    if (
+      latestUpnpJob?.status !== "completed" ||
+      !latestUpnpJob.result?.normalized
+    ) {
+      return;
+    }
+
+    if (state.targetNetwork.upnpSourceJobId === latestUpnpJob.jobId) {
+      return;
+    }
+
+    updateTargetNetwork({
+      upnp: latestUpnpJob.result,
+      upnpSourceJobId: latestUpnpJob.jobId,
+      upnpRefreshedAt: new Date().toISOString(),
+    });
+  }
+
+  function syncTargetManagementServicesFromJobs(state) {
+    if (!state.targetNetwork) {
+      return;
+    }
+
+    const latestManagementJob = getLatestJobByTool(state, "detect_management_services");
+    if (
+      latestManagementJob?.status !== "completed" ||
+      !latestManagementJob.result?.normalized
+    ) {
+      return;
+    }
+
+    if (state.targetNetwork.managementServicesSourceJobId === latestManagementJob.jobId) {
+      return;
+    }
+
+    updateTargetNetwork({
+      managementServices: latestManagementJob.result,
+      managementServicesSourceJobId: latestManagementJob.jobId,
+      managementServicesRefreshedAt: new Date().toISOString(),
+    });
+  }
+
   function syncConnectionFromJobs(state) {
     if (!state.targetNetwork) {
       return;
@@ -989,6 +1221,8 @@ window.addEventListener("DOMContentLoaded", () => {
             tool.name !== "scan_wifi_networks" &&
             tool.name !== "inspect_target_network_profile" &&
             tool.name !== "detect_wps_exposure" &&
+            tool.name !== "detect_upnp_exposure" &&
+            tool.name !== "detect_management_services" &&
             tool.name !== "connect_to_target_network" &&
             tool.name !== "get_connection_status" &&
             tool.name !== "disconnect_from_network" &&
@@ -1543,6 +1777,16 @@ window.addEventListener("DOMContentLoaded", () => {
     const routerExecutionState = getToolExecutionState(state, "discover_gateway_and_router_profile");
     const latestRouterJob = getLatestJobByTool(state, "discover_gateway_and_router_profile");
     const routerProfile = targetContext.routerProfile?.normalized ?? null;
+    const upnpResult = targetContext.targetNetwork?.upnp ?? null;
+    const upnpNormalized = upnpResult?.normalized ?? null;
+    const upnpAssessment = assessUpnpRisk(upnpResult);
+    const upnpExecutionState = getToolExecutionState(state, "detect_upnp_exposure");
+    const managementServicesResult = targetContext.targetNetwork?.managementServices ?? null;
+    const managementServicesNormalized = managementServicesResult?.normalized ?? null;
+    const managementServicesAssessment = assessManagementServicesRisk(managementServicesResult);
+    const managementServicesExecutionState = getToolExecutionState(state, "detect_management_services");
+    const detectedManagementServices = (managementServicesNormalized?.services ?? [])
+      .filter((service) => service?.reachable);
     const openPorts = routerProfile?.open_ports ?? [];
     const webAdmin = routerProfile?.web_admin ?? {
       http: { reachable: false, title: null, status_code: null, server: null, url: null, final_url: null, content_type: null, text_preview: [] },
@@ -1733,8 +1977,178 @@ window.addEventListener("DOMContentLoaded", () => {
                 <div class="empty-state">
                   <p>Cuando lances esta funcionalidad, aqui apareceran la IP del gateway, su MAC, el fabricante probable y los servicios basicos detectados del router.</p>
                 </div>
-              `
+            `
           }
+        </section>
+
+        <section class="profile-panel">
+          <div class="feature-subheading">
+            <h4>Comprobar exposicion UPnP</h4>
+            <span class="signal-pill signal-pill--${escapeHtml(upnpAssessment.tone)}">${escapeHtml(upnpAssessment.headline)}</span>
+          </div>
+          <div class="wps-check-layout">
+            <div class="wps-check-copy">
+              <p>${escapeHtml(
+                upnpNormalized
+                  ? (
+                    upnpNormalized.upnp_detected
+                      ? "Se han detectado respuestas UPnP/SSDP en el entorno conectado y se ha evaluado si parecen pertenecer al router actual."
+                      : "No se han observado respuestas UPnP/SSDP del router durante la comprobacion."
+                  )
+                  : "Lanza esta funcionalidad para detectar si el router conectado expone UPnP/IGD dentro de la red local."
+              )}</p>
+              <div class="wps-check-meta">
+                <span><strong>Gateway objetivo:</strong> ${escapeHtml(routerProfile?.gateway_ip ?? connection?.gateway ?? "No disponible")}</span>
+                <span><strong>Respuestas SSDP:</strong> ${escapeHtml(String(upnpNormalized?.ssdp_responses_count ?? 0))}</span>
+                <span><strong>Router coincidente:</strong> ${escapeHtml(upnpNormalized?.matching_router_response ? "Si" : "No")}</span>
+              </div>
+            </div>
+            <div class="wps-check-actions">
+              <button
+                id="run-upnp-check-button"
+                type="button"
+                class="${escapeHtml(getLoadingButtonClass(upnpExecutionState.isRunning, "primary-action"))}"
+                ${hasConfirmedConnection ? getLoadingButtonAttrs(upnpExecutionState.isRunning, "Analizando") : "disabled"}
+              >
+                Analizar UPnP
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="profile-panel">
+          <div class="feature-subheading">
+            <h4>Evaluar riesgo por UPnP</h4>
+            <span class="signal-pill signal-pill--${escapeHtml(upnpAssessment.tone)}">${escapeHtml(upnpAssessment.headline)}</span>
+          </div>
+          <div class="security-assessment-layout">
+            <div class="security-assessment-summary">
+              <p>${escapeHtml(upnpAssessment.summary)}</p>
+            </div>
+            ${
+              upnpNormalized
+                ? `
+                  <div class="security-assessment-grid">
+                    <article class="profile-highlight-card">
+                      <span>Resultado tecnico</span>
+                      <small><strong>Resultado:</strong> ${escapeHtml(upnpNormalized.upnp_detected ? "Detectado" : "No detectado")}</small>
+                      <small><strong>UPnP detectado:</strong> ${escapeHtml(upnpNormalized.upnp_detected ? "Si" : "No")}</small>
+                      <small><strong>IGD detectado:</strong> ${escapeHtml(upnpNormalized.igd_detected ? "Si" : "No")}</small>
+                      <small><strong>Servicio WANIP:</strong> ${escapeHtml(upnpNormalized.wan_ip_connection_service == null ? "No determinado" : (upnpNormalized.wan_ip_connection_service ? "Si" : "No"))}</small>
+                      <small><strong>Port mapping:</strong> ${escapeHtml(upnpNormalized.port_mapping_capable == null ? "No determinado" : (upnpNormalized.port_mapping_capable ? "Parece soportado" : "No detectado"))}</small>
+                    </article>
+                    <article class="profile-highlight-card">
+                      <span>Detalles del dispositivo</span>
+                      <small><strong>Friendly name:</strong> ${escapeHtml(upnpNormalized.device_friendly_name ?? "No disponible")}</small>
+                      <small><strong>Fabricante:</strong> ${escapeHtml(upnpNormalized.device_manufacturer ?? "No disponible")}</small>
+                      <small><strong>Modelo:</strong> ${escapeHtml(upnpNormalized.device_model ?? "No disponible")}</small>
+                      <small><strong>Location:</strong> ${escapeHtml(upnpNormalized.location ?? "No disponible")}</small>
+                    </article>
+                  </div>
+                `
+                : `
+                  <div class="empty-state">
+                    <p>Aqui apareceran la evidencia SSDP/UPnP y una interpretacion del riesgo una vez se ejecute la comprobacion.</p>
+                  </div>
+                `
+            }
+            <div class="security-assessment-grid">
+              <article class="profile-highlight-card">
+                <span>Recomendaciones</span>
+                <small>UPnP puede ser comodo, pero tambien amplia la capacidad de que equipos internos automaticen aperturas de puertos.</small>
+                <ul class="assessment-list">
+                  ${upnpAssessment.recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+                </ul>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="profile-panel">
+          <div class="feature-subheading">
+            <h4>Servicios de administracion</h4>
+            <span class="signal-pill signal-pill--${escapeHtml(managementServicesAssessment.tone)}">${escapeHtml(managementServicesAssessment.headline)}</span>
+          </div>
+          <div class="wps-check-layout">
+            <div class="wps-check-copy">
+              <p>${escapeHtml(
+                managementServicesNormalized
+                  ? `Se han revisado ${managementServicesNormalized.services_detected_count} servicio(s) de administracion accesibles en los puertos tipicos del router.`
+                  : "Lanza esta comprobacion para detectar panel web, SSH, Telnet, FTP, SNMP, TR-069 y otros puertos habituales de gestion del router."
+              )}</p>
+              <div class="wps-check-meta">
+                <span><strong>Gateway objetivo:</strong> ${escapeHtml(routerProfile?.gateway_ip ?? connection?.gateway ?? "No disponible")}</span>
+                <span><strong>Servicios detectados:</strong> ${escapeHtml(String(managementServicesNormalized?.services_detected_count ?? 0))}</span>
+                <span><strong>Nivel:</strong> ${escapeHtml(managementServicesNormalized?.management_exposure_level ?? "No determinado")}</span>
+              </div>
+            </div>
+            <div class="wps-check-actions">
+              <button
+                id="run-management-services-button"
+                type="button"
+                class="${escapeHtml(getLoadingButtonClass(managementServicesExecutionState.isRunning, "primary-action"))}"
+                ${hasConfirmedConnection ? getLoadingButtonAttrs(managementServicesExecutionState.isRunning, "Analizando") : "disabled"}
+              >
+                Analizar servicios
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="profile-panel">
+          <div class="feature-subheading">
+            <h4>Evaluar seguridad de servicios de administracion</h4>
+            <span class="signal-pill signal-pill--${escapeHtml(managementServicesAssessment.tone)}">${escapeHtml(managementServicesAssessment.headline)}</span>
+          </div>
+          <div class="security-assessment-layout">
+            <div class="security-assessment-summary">
+              <p>${escapeHtml(managementServicesAssessment.summary)}</p>
+            </div>
+            ${
+              managementServicesNormalized
+                ? `
+                  ${
+                    detectedManagementServices.length > 0
+                      ? `
+                        <div class="security-assessment-grid">
+                          ${detectedManagementServices
+                            .map((service) => `
+                              <article class="profile-highlight-card">
+                                <span>${escapeHtml(service.service_name)}</span>
+                                <strong>${escapeHtml(`Puerto ${service.port} abierto`)}</strong>
+                                <small><strong>Riesgo:</strong> ${escapeHtml(service.risk_level)}</small>
+                                <small><strong>Auth:</strong> ${escapeHtml(service.auth_type ?? (service.requires_auth == null ? "No determinado" : (service.requires_auth ? "Requerida" : "No requerida")))}</small>
+                                <small><strong>Banner:</strong> ${escapeHtml(service.banner ?? "No disponible")}</small>
+                                <small><strong>URL:</strong> ${service.url ? `<a class="admin-link" href="${escapeHtml(service.url)}" target="_blank" rel="noreferrer">${escapeHtml(service.url)}</a>` : "No aplica"}</small>
+                                <small><strong>Titulo:</strong> ${escapeHtml(service.title ?? "No disponible")}</small>
+                              </article>
+                            `)
+                            .join("")}
+                        </div>
+                      `
+                      : `
+                        <div class="empty-state">
+                          <p>No se han detectado servicios de administracion abiertos en los puertos revisados durante esta comprobacion.</p>
+                        </div>
+                      `
+                  }
+                `
+                : `
+                  <div class="empty-state">
+                    <p>Aqui apareceran los servicios detectados y una lectura de riesgo una vez se ejecute la comprobacion.</p>
+                  </div>
+                `
+            }
+            <div class="security-assessment-grid">
+              <article class="profile-highlight-card">
+                <span>Recomendaciones</span>
+                <small>Esta evaluacion ayuda a decidir que accesos de gestion conviene mantener y cuales seria mejor cerrar.</small>
+                <ul class="assessment-list">
+                  ${managementServicesAssessment.recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+                </ul>
+              </article>
+            </div>
+          </div>
         </section>
       </div>
     `;
@@ -1754,6 +2168,44 @@ window.addEventListener("DOMContentLoaded", () => {
         renderDashboard(getState());
       } catch (error) {
         console.error("No se pudo identificar el router:", error);
+      }
+    });
+
+    const runUpnpCheckButton = document.querySelector("#run-upnp-check-button");
+    runUpnpCheckButton?.addEventListener("click", async () => {
+      if (!hasConfirmedConnection) {
+        return;
+      }
+
+      try {
+        const job = await executeTool("detect_upnp_exposure", {
+          interface: targetContext.interface ?? "wlan0",
+          gateway_ip: routerProfile?.gateway_ip ?? connection?.gateway ?? "",
+          timeout_seconds: "4",
+        });
+        uiState.selectedJobId = job.jobId;
+        renderDashboard(getState());
+      } catch (error) {
+        console.error("No se pudo analizar la exposicion UPnP:", error);
+      }
+    });
+
+    const runManagementServicesButton = document.querySelector("#run-management-services-button");
+    runManagementServicesButton?.addEventListener("click", async () => {
+      if (!hasConfirmedConnection) {
+        return;
+      }
+
+      try {
+        const job = await executeTool("detect_management_services", {
+          interface: targetContext.interface ?? "wlan0",
+          gateway_ip: routerProfile?.gateway_ip ?? connection?.gateway ?? "",
+          timeout_seconds: "3",
+        });
+        uiState.selectedJobId = job.jobId;
+        renderDashboard(getState());
+      } catch (error) {
+        console.error("No se pudieron analizar los servicios de administracion:", error);
       }
     });
   }
@@ -1948,6 +2400,10 @@ window.addEventListener("DOMContentLoaded", () => {
           profileSourceJobId: null,
           wps: null,
           wpsSourceJobId: null,
+          upnp: null,
+          upnpSourceJobId: null,
+          managementServices: null,
+          managementServicesSourceJobId: null,
           connection: null,
           connectionSourceJobId: null,
           routerProfile: null,
@@ -2039,12 +2495,116 @@ window.addEventListener("DOMContentLoaded", () => {
     `;
   }
 
+  function renderWorkspace(state) {
+    if (!workspaceContent) {
+      return;
+    }
+
+    const targetContext = getTargetContext(state);
+    const targetNetwork = targetContext.targetNetwork;
+    const securityScore = computeTargetSecurityScore(targetContext);
+    const selectedNetwork = targetContext.primaryNetwork ?? targetNetwork?.selectedNetwork ?? null;
+    const connection = targetContext.connection ?? null;
+
+    if (!targetNetwork) {
+      workspaceContent.innerHTML = `
+        <article class="surface-card">
+          <div class="card-heading">
+            <h3>Estado guardado</h3>
+            <span class="pill">Vacío</span>
+          </div>
+          <div class="empty-state">
+            <p>Todavia no hay una red objetivo fijada ni resultados persistidos para este espacio.</p>
+          </div>
+        </article>
+      `;
+      return;
+    }
+
+    const completedChecks = [
+      targetNetwork.scanResult?.normalized ? "Escaneo inicial" : null,
+      targetNetwork.profile?.normalized ? "Perfil enriquecido" : null,
+      targetNetwork.wps?.normalized ? "WPS" : null,
+      targetNetwork.upnp?.normalized ? "UPnP" : null,
+      targetNetwork.managementServices?.normalized ? "Servicios de administracion" : null,
+      targetNetwork.routerProfile?.normalized ? "Router" : null,
+    ].filter(Boolean);
+
+    workspaceContent.innerHTML = `
+      ${renderSecurityScoreSection(securityScore, "Puntuacion global de la red objetivo")}
+      <div class="content-grid">
+        <article class="surface-card">
+          <div class="card-heading">
+            <h3>Estado guardado</h3>
+            <span class="pill">Persistente</span>
+          </div>
+          <p>Este espacio resume la red fijada y el contexto que la aplicacion conserva entre sesiones para seguir evaluando su seguridad.</p>
+          <ul class="feature-list">
+            <li><strong>SSID objetivo:</strong> ${escapeHtml(targetContext.targetSsid ?? selectedNetwork?.ssid ?? "No disponible")}</li>
+            <li><strong>BSSID principal:</strong> ${escapeHtml(selectedNetwork?.bssid ?? "No disponible")}</li>
+            <li><strong>Interfaz recordada:</strong> ${escapeHtml(targetContext.interface ?? "No disponible")}</li>
+            <li><strong>Estado de conexion:</strong> ${escapeHtml(connection?.connected ? (connection.matchesExpectedTarget ? "Conectado a la red fijada" : "Conectado a otra red") : "No conectado")}</li>
+            <li><strong>Comprobaciones guardadas:</strong> ${escapeHtml(completedChecks.join(", ") || "Ninguna")}</li>
+          </ul>
+        </article>
+
+        <article class="surface-card">
+          <div class="card-heading">
+            <h3>Limpieza del estado</h3>
+            <span class="pill">Control</span>
+          </div>
+          <p>Puedes limpiar el contexto persistido de la aplicacion para empezar otra auditoria con una red distinta o dejar el entorno limpio.</p>
+          <ul class="feature-list">
+            <li><strong>Desfijar red</strong>: elimina solo la red objetivo actual.</li>
+            <li><strong>Limpiar estado</strong>: elimina la red fijada y tambien los resultados y jobs guardados en la interfaz.</li>
+          </ul>
+          <div class="workspace-actions">
+            <button id="workspace-clear-target-button" type="button" class="secondary-action">Desfijar red</button>
+            <button id="workspace-clear-state-button" type="button" class="danger-action">Limpiar estado</button>
+          </div>
+        </article>
+      </div>
+    `;
+
+    const clearTargetButton = document.querySelector("#workspace-clear-target-button");
+    clearTargetButton?.addEventListener("click", () => {
+      clearTargetNetwork();
+      uiState.showConnectForm = false;
+      uiState.selectedJobId = null;
+      uiState.dashboardConnectionView = null;
+      activateView("dashboard");
+    });
+
+    const clearStateButton = document.querySelector("#workspace-clear-state-button");
+    clearStateButton?.addEventListener("click", () => {
+      stopAllPolling();
+      clearApplicationState();
+      uiState.showConnectForm = false;
+      uiState.selectedJobId = null;
+      uiState.dashboardConnectionView = null;
+      activateView("dashboard");
+    });
+  }
+
   function renderDashboard(state) {
     const hasTargetNetwork = Boolean(state.targetNetwork);
     const tools = state.tools;
+    const securityScore = hasTargetNetwork ? computeTargetSecurityScore(getTargetContext(state)) : null;
 
     activeJobsMetric.textContent = String(state.activeJobIds.length);
     toolsCountMetric.textContent = String(tools.length);
+    if (securityScoreMetric) {
+      securityScoreMetric.textContent = securityScore ? formatSecurityScore(securityScore) : "-";
+      securityScoreMetric.className = securityScore
+        ? `metric-score--${securityScore.tone}`
+        : "metric-score--muted";
+    }
+    if (securityCoverageMetric) {
+      securityCoverageMetric.textContent = securityScore ? `${securityScore.coveragePercent}%` : "-";
+      securityCoverageMetric.className = securityScore
+        ? `metric-score--${securityScore.coverageTone}`
+        : "metric-score--muted";
+    }
     badge.textContent = `${isTauriRuntime ? "Runtime Tauri activo" : "Vista web cargada"} · ${tools.length} tools`;
 
     renderTargetNetworkPanel(state);
@@ -2055,6 +2615,7 @@ window.addEventListener("DOMContentLoaded", () => {
     renderToolsList(tools);
     renderJobs(state);
     renderResultViewer(state);
+    renderWorkspace(state);
 
     document.querySelectorAll("[data-job-select]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -2073,6 +2634,8 @@ window.addEventListener("DOMContentLoaded", () => {
   subscribe((state) => {
     syncTargetProfileFromJobs(state);
     syncTargetWpsFromJobs(state);
+    syncTargetUpnpFromJobs(state);
+    syncTargetManagementServicesFromJobs(state);
     syncConnectionFromJobs(state);
     syncRouterProfileFromJobs(state);
     renderDashboard(getState());
