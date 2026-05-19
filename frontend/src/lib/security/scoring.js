@@ -333,6 +333,71 @@ const SECURITY_SCORING_RULES = [
     },
   },
   {
+    id: "router_admin_credentials",
+    title: "Credenciales del panel",
+    pendingLabel: "Completar la evaluacion asistida para indicar si la clave del panel sigue siendo la inicial o ya fue cambiada.",
+    evaluate: (context) => {
+      const assessment = context?.targetNetwork?.adminCredentialsAssessment ?? null;
+      const adminAuth = context?.targetNetwork?.routerProfile?.normalized?.admin_auth ?? null;
+
+      if (!adminAuth || adminAuth.auth_required == null) {
+        return unknownRuleResult("Todavia no se ha identificado con suficiente detalle el acceso al panel del router.");
+      }
+
+      if (adminAuth.auth_required === false) {
+        return positiveRuleResult(
+          "No aplica",
+          "Esta comprobacion no aplica porque el panel no parece requerir credenciales administrativas en el flujo observado.",
+        );
+      }
+
+      if (!assessment) {
+        return unknownRuleResult("Todavia no se ha completado la evaluacion asistida de credenciales del panel.");
+      }
+
+      if (assessment.status === "changed_by_user") {
+        return positiveRuleResult(
+          "Credencial personalizada",
+          "El usuario indica que la clave del panel ya fue cambiada y no sigue siendo la credencial inicial del router.",
+          [
+            "Guardar esta practica: mantener una clave administrativa personalizada reduce mucho el riesgo de acceso no autorizado.",
+          ],
+        );
+      }
+
+      if (assessment.status === "factory_unique") {
+        return warningRuleResult(
+          "Clave inicial unica",
+          "La clave del panel parece seguir siendo la inicial del equipo o la entregada por la operadora. No es una credencial universal, pero sigue siendo mejor cambiarla.",
+          -0.9,
+          [
+            "Cambiar la clave administrativa del panel por una personalizada y solo conocida por el responsable de la red.",
+          ],
+        );
+      }
+
+      if (assessment.status === "factory_common") {
+        return negativeRuleResult(
+          "Credencial por defecto conocida",
+          "La evaluacion asistida indica que el panel sigue dependiendo de una credencial generica o conocida, lo que eleva mucho el riesgo de acceso administrativo no autorizado.",
+          -2.6,
+          [
+            "Cambiar de inmediato la credencial administrativa por una combinacion personalizada y robusta.",
+          ],
+        );
+      }
+
+      return warningRuleResult(
+        "Sin confirmar",
+        "Todavia no hay certeza suficiente sobre si la credencial del panel sigue siendo la inicial o ya fue cambiada.",
+        -0.5,
+        [
+          "Comprobar manualmente si la clave del panel sigue siendo la de origen y, si es asi, sustituirla por una personalizada.",
+        ],
+      );
+    },
+  },
+  {
     id: "management_services",
     title: "Servicios de administracion",
     pendingLabel: "Ejecutar el analisis de servicios de administracion del router.",
@@ -468,6 +533,8 @@ function collectKnownTimestamps(context) {
     targetNetwork?.upnp?.normalized?.completed_at,
     targetNetwork?.managementServices?.normalized?.completed_at,
     targetNetwork?.routerProfile?.normalized?.completed_at,
+    targetNetwork?.passwordAssessmentUpdatedAt,
+    targetNetwork?.adminCredentialsAssessment?.checkedAt,
     targetNetwork?.profileRefreshedAt,
     targetNetwork?.wpsRefreshedAt,
     targetNetwork?.upnpRefreshedAt,

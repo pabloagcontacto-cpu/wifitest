@@ -907,6 +907,114 @@ window.addEventListener("DOMContentLoaded", () => {
       };
     }
 
+  function getAdminCredentialsAssessmentDisplay(assessment, adminAuth, webAdmin) {
+    const detectedPanelUrl =
+      webAdmin?.https?.final_url ??
+      webAdmin?.http?.final_url ??
+      webAdmin?.https?.url ??
+      webAdmin?.http?.url ??
+      null;
+
+    if (adminAuth?.auth_required === false) {
+      return {
+        tone: "muted",
+        headline: "No aplica",
+        summary: "En el flujo observado no parece haber una autenticacion administrativa clara en el panel, asi que esta comprobacion concreta no aplica tal y como esta planteada.",
+        recommendations: [
+          "Priorizar la revision del propio mecanismo de autenticacion del panel, porque no detectar una barrera clara ya seria una senal grave.",
+        ],
+        facts: [
+          { label: "Estado declarado", value: "No aplica" },
+          { label: "Tipo de acceso", value: getAdminAuthHeadline(adminAuth) },
+          { label: "Panel detectado", value: detectedPanelUrl ?? "No disponible" },
+        ],
+      };
+    }
+
+    if (!assessment) {
+      return {
+        tone: "muted",
+        headline: "Sin confirmar",
+        summary: "Todavia no has indicado si la clave del panel fue cambiada o si sigue siendo la que venia de origen con el router o la operadora.",
+        recommendations: [
+          "Marca si la credencial del panel ya fue cambiada, si sigue siendo la inicial unica del equipo o si crees que es una credencial generica.",
+          "La aplicacion solo guarda esta clasificacion guiada, no la contrasena administrativa en texto plano.",
+        ],
+        facts: [
+          { label: "Estado declarado", value: "Pendiente" },
+          { label: "Tipo de acceso", value: getAdminAuthHeadline(adminAuth) },
+          { label: "Panel detectado", value: detectedPanelUrl ?? "No disponible" },
+        ],
+      };
+    }
+
+    const commonFacts = [
+      {
+        label: "Estado declarado",
+        value:
+          assessment.status === "changed_by_user"
+            ? "Personalizada"
+            : assessment.status === "factory_unique"
+              ? "Inicial unica"
+              : assessment.status === "factory_common"
+                ? "Generica o conocida"
+                : "Sin confirmar",
+      },
+      { label: "Tipo de acceso", value: getAdminAuthHeadline(adminAuth) },
+      { label: "Panel detectado", value: assessment.panelUrl ?? detectedPanelUrl ?? "No disponible" },
+    ];
+
+    if (assessment.status === "changed_by_user") {
+      return {
+        tone: "good",
+        headline: "Credencial personalizada",
+        summary: "El panel no parece depender ya de la credencial inicial. Eso reduce mucho el riesgo de que alguien con acceso a la red pruebe una clave conocida de fabrica.",
+        recommendations: [
+          "Mantener una clave administrativa distinta de la Wi-Fi y solo conocida por quien administra la red.",
+          "Si cambias de router u operadora, repetir esta comprobacion para no heredar credenciales iniciales sin revisar.",
+        ],
+        facts: commonFacts,
+      };
+    }
+
+    if (assessment.status === "factory_unique") {
+      return {
+        tone: "medium",
+        headline: "Clave inicial unica",
+        summary: "La credencial parece ser la inicial del equipo o la entregada por la operadora. No es tan grave como una clave universal, pero sigue siendo recomendable cambiarla.",
+        recommendations: [
+          "Sustituir la clave del panel por una personalizada y robusta.",
+          "Evitar reutilizar la misma clave de la Wi-Fi para la administracion del router.",
+        ],
+        facts: commonFacts,
+      };
+    }
+
+    if (assessment.status === "factory_common") {
+      return {
+        tone: "bad",
+        headline: "Credencial por defecto conocida",
+        summary: "El panel parece seguir dependiendo de una credencial generica o ampliamente conocida. Eso es un riesgo alto porque facilita el acceso administrativo no autorizado.",
+        recommendations: [
+          "Cambiar la credencial del panel de inmediato por una combinacion personalizada y robusta.",
+          "Comprobar despues del cambio que el acceso anterior deja de funcionar.",
+        ],
+        facts: commonFacts,
+      };
+    }
+
+    return {
+      tone: "muted",
+      headline: "Sin confirmar",
+      summary: "Todavia no hay certeza suficiente sobre si el panel sigue usando su credencial inicial o si ya fue cambiada por una personalizada.",
+      recommendations: [
+        "Confirmar manualmente este punto porque tiene bastante impacto en la seguridad real del router.",
+        "Si tienes dudas, trata la clave actual como mejorable y considera cambiarla por una personalizada.",
+      ],
+      facts: commonFacts,
+    };
+  }
+
   function sumNetworkMetric(networks, metricName) {
     return networks.reduce((total, network) => {
       const value = Number(network?.[metricName] ?? 0);
@@ -1853,14 +1961,16 @@ window.addEventListener("DOMContentLoaded", () => {
     const managementServicesExecutionState = getToolExecutionState(state, "detect_management_services");
     const passwordAssessment = targetContext.targetNetwork?.passwordAssessment ?? null;
     const passwordAssessmentDisplay = getPasswordAssessmentDisplay(passwordAssessment);
-    const detectedManagementServices = (managementServicesNormalized?.services ?? [])
-      .filter((service) => service?.reachable);
-    const openPorts = routerProfile?.open_ports ?? [];
+    const adminCredentialsAssessment = targetContext.targetNetwork?.adminCredentialsAssessment ?? null;
     const webAdmin = routerProfile?.web_admin ?? {
       http: { reachable: false, title: null, status_code: null, server: null, url: null, final_url: null, content_type: null, text_preview: [] },
       https: { reachable: false, title: null, status_code: null, server: null, url: null, final_url: null, content_type: null, text_preview: [] },
     };
     const adminAuth = routerProfile?.admin_auth ?? null;
+    const adminCredentialsDisplay = getAdminCredentialsAssessmentDisplay(adminCredentialsAssessment, adminAuth, webAdmin);
+    const detectedManagementServices = (managementServicesNormalized?.services ?? [])
+      .filter((service) => service?.reachable);
+    const openPorts = routerProfile?.open_ports ?? [];
 
     let routerTone = "muted";
     let routerHeadline = "Todavia sin analizar";
@@ -2084,6 +2194,104 @@ window.addEventListener("DOMContentLoaded", () => {
 
         <section class="profile-panel">
           <div class="feature-subheading">
+            <h4>Comprobar credenciales del panel</h4>
+            <span class="signal-pill signal-pill--${escapeHtml(adminCredentialsDisplay.tone)}">${escapeHtml(adminCredentialsDisplay.headline)}</span>
+          </div>
+          <div class="security-assessment-layout">
+            <div class="security-assessment-summary">
+              <p>${
+                routerProfile
+                  ? escapeHtml("Esta comprobacion es asistida: tu indicas si la clave administrativa del panel ya fue cambiada o si sigue siendo la inicial. La aplicacion no guarda la contrasena en texto plano.")
+                  : escapeHtml("Primero conviene identificar el router y el panel de administracion para contextualizar esta comprobacion.")
+              }</p>
+            </div>
+            <div class="tool-form">
+              <div class="tool-form-grid">
+                <label class="form-field">
+                  <span>Situacion de la credencial administrativa</span>
+                  <select id="admin-credentials-status" ${routerProfile && adminAuth?.auth_required !== false ? "" : "disabled"}>
+                    <option value="changed_by_user" ${adminCredentialsAssessment?.status === "changed_by_user" ? "selected" : ""}>Ya cambie la clave del panel por una mia</option>
+                    <option value="factory_unique" ${adminCredentialsAssessment?.status === "factory_unique" ? "selected" : ""}>Sigo usando la clave original del router o la que me dio la operadora</option>
+                    <option value="factory_common" ${adminCredentialsAssessment?.status === "factory_common" ? "selected" : ""}>Sigo usando una clave tipica o conocida, por ejemplo admin o una parecida</option>
+                    <option value="unknown" ${!adminCredentialsAssessment || adminCredentialsAssessment?.status === "unknown" ? "selected" : ""}>No estoy seguro de cual es el caso</option>
+                  </select>
+                  <small>${
+                    adminAuth?.auth_required === false
+                      ? escapeHtml("Esta comprobacion no aplica porque el panel no parece pedir autenticacion.")
+                      : escapeHtml("Selecciona la opcion que mejor describa la clave actual del panel. Si tienes dudas, entra en el panel web del router y revisa si indica que debes usar la clave original del equipo, una clave que te dio la operadora o una clave que ya cambiaste tu.")
+                  }</small>
+                </label>
+                <article class="profile-highlight-card">
+                  <span>Contexto detectado</span>
+                  <small><strong>Tipo de acceso:</strong> ${escapeHtml(getAdminAuthHeadline(adminAuth))}</small>
+                  <small><strong>Panel:</strong> ${webAdmin?.https?.final_url || webAdmin?.http?.final_url || webAdmin?.https?.url || webAdmin?.http?.url ? `<a class="admin-link" href="${escapeHtml(webAdmin?.https?.final_url ?? webAdmin?.http?.final_url ?? webAdmin?.https?.url ?? webAdmin?.http?.url ?? "#")}" target="_blank" rel="noreferrer">${escapeHtml(webAdmin?.https?.final_url ?? webAdmin?.http?.final_url ?? webAdmin?.https?.url ?? webAdmin?.http?.url ?? "No disponible")}</a>` : "No disponible"}</small>
+                  <small><strong>Pagina detectada:</strong> ${escapeHtml(webAdmin?.https?.title ?? webAdmin?.http?.title ?? "Sin titulo detectado")}</small>
+                  <small><strong>Fabricante:</strong> ${escapeHtml(routerProfile?.gateway_vendor ?? "No identificado")}</small>
+                  <small><strong>Ayuda:</strong> En muchos routers, el propio panel o una nota junto al formulario explica si debes usar la clave original del equipo, una clave de operadora o una contrasena que ya cambiaste anteriormente.</small>
+                </article>
+              </div>
+              <div class="tool-form-actions">
+                <button
+                  id="save-admin-credentials-assessment-button"
+                  type="button"
+                  class="primary-action"
+                  ${routerProfile && adminAuth?.auth_required !== false ? "" : "disabled"}
+                >
+                  Guardar evaluacion
+                </button>
+                ${
+                  adminCredentialsAssessment
+                    ? `
+                      <button
+                        id="clear-admin-credentials-assessment-button"
+                        type="button"
+                        class="secondary-action"
+                      >
+                        Borrar evaluacion
+                      </button>
+                    `
+                    : ""
+                }
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="profile-panel">
+          <div class="feature-subheading">
+            <h4>Evaluar riesgo de credenciales del panel</h4>
+            <span class="signal-pill signal-pill--${escapeHtml(adminCredentialsDisplay.tone)}">${escapeHtml(adminCredentialsDisplay.headline)}</span>
+          </div>
+          <div class="security-assessment-layout">
+            <div class="security-assessment-summary">
+              <p>${escapeHtml(adminCredentialsDisplay.summary)}</p>
+            </div>
+            <div class="security-assessment-grid">
+              ${adminCredentialsDisplay.facts
+                .map(
+                  (fact) => `
+                    <article class="profile-highlight-card">
+                      <span>${escapeHtml(fact.label)}</span>
+                      <strong>${escapeHtml(fact.value)}</strong>
+                    </article>
+                  `,
+                )
+                .join("")}
+            </div>
+            <div class="security-assessment-grid">
+              <article class="profile-highlight-card">
+                <span>Recomendaciones</span>
+                <small>Esta valoracion se basa en la informacion que ya conoce la app del panel y en la confirmacion manual del usuario.</small>
+                <ul class="assessment-list">
+                  ${adminCredentialsDisplay.recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+                </ul>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="profile-panel">
+          <div class="feature-subheading">
             <h4>Comprobar exposicion UPnP</h4>
             <span class="signal-pill signal-pill--${escapeHtml(upnpAssessment.tone)}">${escapeHtml(upnpAssessment.headline)}</span>
           </div>
@@ -2289,6 +2497,38 @@ window.addEventListener("DOMContentLoaded", () => {
       } catch (error) {
         console.error("No se pudo analizar la exposicion UPnP:", error);
       }
+    });
+
+    const saveAdminCredentialsAssessmentButton = document.querySelector("#save-admin-credentials-assessment-button");
+    saveAdminCredentialsAssessmentButton?.addEventListener("click", () => {
+      const statusSelect = document.querySelector("#admin-credentials-status");
+      if (!(statusSelect instanceof HTMLSelectElement)) {
+        return;
+      }
+
+      updateTargetNetwork({
+        adminCredentialsAssessment: {
+          status: statusSelect.value,
+          source: "user_assisted",
+          checkedAt: new Date().toISOString(),
+          authType: adminAuth?.auth_type ?? null,
+          panelUrl:
+            webAdmin?.https?.final_url ??
+            webAdmin?.http?.final_url ??
+            webAdmin?.https?.url ??
+            webAdmin?.http?.url ??
+            null,
+          panelTitle: webAdmin?.https?.title ?? webAdmin?.http?.title ?? null,
+          routerVendor: routerProfile?.gateway_vendor ?? null,
+        },
+      });
+    });
+
+    const clearAdminCredentialsAssessmentButton = document.querySelector("#clear-admin-credentials-assessment-button");
+    clearAdminCredentialsAssessmentButton?.addEventListener("click", () => {
+      updateTargetNetwork({
+        adminCredentialsAssessment: null,
+      });
     });
 
     const runManagementServicesButton = document.querySelector("#run-management-services-button");
@@ -2505,6 +2745,7 @@ window.addEventListener("DOMContentLoaded", () => {
           upnpSourceJobId: null,
           managementServices: null,
           managementServicesSourceJobId: null,
+          adminCredentialsAssessment: null,
           passwordAssessment: null,
           passwordAssessmentUpdatedAt: null,
           connection: null,
