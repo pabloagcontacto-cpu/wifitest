@@ -8,7 +8,12 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from tools.helpers import ensure_interface_mode, utc_now_iso
+from tools.helpers import (
+    capture_managed_restore_context,
+    ensure_interface_mode,
+    restore_managed_connection,
+    utc_now_iso,
+)
 from tools.scan_wifi_networks import (
     AIRODUMP_CSV_SUFFIX,
     build_airodump_command,
@@ -29,40 +34,45 @@ def inspect_target_network_profile_execute(input: dict[str, Any]) -> dict[str, A
             "Install aircrack-ng before using this tool."
         )
 
-    interface_details = ensure_interface_mode(requested_interface, "monitor")
-    interface = interface_details["resolved_interface"]
+    restore_context = capture_managed_restore_context(requested_interface)
 
-    with tempfile.TemporaryDirectory(prefix="wifitest_profile_") as temp_dir:
-        output_prefix = Path(temp_dir) / "profile"
-        csv_path = Path(f"{output_prefix}{AIRODUMP_CSV_SUFFIX}")
-        command = build_airodump_command(interface, "all", output_prefix)
+    try:
+        interface_details = ensure_interface_mode(requested_interface, "monitor")
+        interface = interface_details["resolved_interface"]
 
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            start_new_session=True,
-        )
+        with tempfile.TemporaryDirectory(prefix="wifitest_profile_") as temp_dir:
+            output_prefix = Path(temp_dir) / "profile"
+            csv_path = Path(f"{output_prefix}{AIRODUMP_CSV_SUFFIX}")
+            command = build_airodump_command(interface, "all", output_prefix)
 
-        stdout_text = ""
-        stderr_text = ""
-
-        try:
-            stdout_text, stderr_text = process.communicate(timeout=scan_seconds)
-        except subprocess.TimeoutExpired:
-            stop_capture_process(process)
-            stdout_text, stderr_text = process.communicate()
-
-        if not csv_path.exists():
-            raise RuntimeError(
-                "airodump-ng did not generate the expected CSV output file while profiling the target network. "
-                f"Command: {' '.join(command)} | returncode={process.returncode} | "
-                f"stderr={stderr_text.strip() or '<empty>'}"
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                start_new_session=True,
             )
 
-        raw_csv = csv_path.read_text(encoding="utf-8")
-        networks, _clients = parse_airodump_csv(csv_path, include_hidden=True)
+            stdout_text = ""
+            stderr_text = ""
+
+            try:
+                stdout_text, stderr_text = process.communicate(timeout=scan_seconds)
+            except subprocess.TimeoutExpired:
+                stop_capture_process(process)
+                stdout_text, stderr_text = process.communicate()
+
+            if not csv_path.exists():
+                raise RuntimeError(
+                    "airodump-ng did not generate the expected CSV output file while profiling the target network. "
+                    f"Command: {' '.join(command)} | returncode={process.returncode} | "
+                    f"stderr={stderr_text.strip() or '<empty>'}"
+                )
+
+            raw_csv = csv_path.read_text(encoding="utf-8")
+            networks, _clients = parse_airodump_csv(csv_path, include_hidden=True)
+    finally:
+        restore_managed_connection(requested_interface, restore_context)
 
     target_networks = [
         network

@@ -373,3 +373,44 @@ def get_managed_connection_snapshot(interface: str, expected_ssid: str | None = 
         "dns_servers": dns_servers,
         "connection_profile": connection_profile,
     }
+
+
+def capture_managed_restore_context(base_interface: str) -> dict[str, Any]:
+    """
+    Capture the current managed-mode connection state before switching to monitor.
+
+    This allows monitor-mode tools to restore the interface mode afterwards and,
+    when appropriate, ask NetworkManager to reconnect the previous Wi-Fi link.
+    """
+    details = resolve_existing_interface(base_interface, preferred_mode="managed")
+    if details is None:
+        return {
+            "resolved_interface": None,
+            "was_connected": False,
+            "active_ssid": None,
+            "connection_profile": None,
+        }
+
+    resolved_interface = str(details.get("name"))
+    snapshot = get_managed_connection_snapshot(resolved_interface)
+    return {
+        "resolved_interface": resolved_interface,
+        "was_connected": bool(snapshot["connected"]),
+        "active_ssid": snapshot["active_ssid"],
+        "connection_profile": snapshot["connection_profile"],
+    }
+
+
+def restore_managed_connection(base_interface: str, restore_context: dict[str, Any] | None = None) -> dict[str, str]:
+    """
+    Restore one logical interface to managed mode and reconnect if it was connected before.
+    """
+    interface_details = ensure_interface_mode(base_interface, "managed")
+    resolved_interface = interface_details["resolved_interface"]
+
+    was_connected = bool((restore_context or {}).get("was_connected"))
+    if was_connected:
+        reconnect_interface_with_networkmanager(resolved_interface)
+        time.sleep(2)
+
+    return interface_details

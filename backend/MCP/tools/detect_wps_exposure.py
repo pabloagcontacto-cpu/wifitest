@@ -8,7 +8,12 @@ import signal
 import subprocess
 from typing import Any
 
-from tools.helpers import ensure_interface_mode, utc_now_iso
+from tools.helpers import (
+    capture_managed_restore_context,
+    ensure_interface_mode,
+    restore_managed_connection,
+    utc_now_iso,
+)
 
 
 def parse_bool_from_lock_value(value: str) -> bool | None:
@@ -129,37 +134,43 @@ def detect_wps_exposure_execute(input: dict[str, Any]) -> dict[str, Any]:
             "Install reaver-wps-fork-t6x or an equivalent package before using this tool."
         )
 
-    interface_details = ensure_interface_mode(requested_interface, "monitor")
-    interface = interface_details["resolved_interface"]
-
-    command = ["wash", "-i", interface]
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
-    )
-
-    stdout_text = ""
-    stderr_text = ""
+    restore_context = capture_managed_restore_context(requested_interface)
 
     try:
-        stdout_text, stderr_text = process.communicate(timeout=scan_seconds)
-    except subprocess.TimeoutExpired:
-        stop_process_group(process)
-        stdout_text, stderr_text = process.communicate()
+        interface_details = ensure_interface_mode(requested_interface, "monitor")
+        interface = interface_details["resolved_interface"]
 
-    raw_text = "\n".join(filter(None, [stdout_text.strip(), stderr_text.strip()]))
-
-    if process.returncode not in {0, None} and stdout_text.strip() == "":
-        raise RuntimeError(
-            "wash did not complete successfully. "
-            f"Command: {' '.join(command)} | returncode={process.returncode} | "
-            f"stderr={stderr_text.strip() or '<empty>'}"
+        command = ["wash", "-i", interface]
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
         )
 
-    parsed_output = parse_wash_output(stdout_text, target_bssids)
+        stdout_text = ""
+        stderr_text = ""
+
+        try:
+            stdout_text, stderr_text = process.communicate(timeout=scan_seconds)
+        except subprocess.TimeoutExpired:
+            stop_process_group(process)
+            stdout_text, stderr_text = process.communicate()
+
+        raw_text = "\n".join(filter(None, [stdout_text.strip(), stderr_text.strip()]))
+
+        if process.returncode not in {0, None} and stdout_text.strip() == "":
+            raise RuntimeError(
+                "wash did not complete successfully. "
+                f"Command: {' '.join(command)} | returncode={process.returncode} | "
+                f"stderr={stderr_text.strip() or '<empty>'}"
+            )
+
+        parsed_output = parse_wash_output(stdout_text, target_bssids)
+    finally:
+        restore_managed_connection(requested_interface, restore_context)
+
     parsed_output["interface"] = interface
     parsed_output["requested_interface"] = requested_interface
     parsed_output["required_mode"] = "monitor"

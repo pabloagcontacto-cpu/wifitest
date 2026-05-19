@@ -9,6 +9,7 @@ import {
   updateTargetNetwork,
 } from "./lib/mcp/store.js";
 import { computeTargetSecurityScore } from "./lib/security/scoring.js";
+import { analyzeWifiPasswordStrength } from "./lib/security/password-strength.js";
 import { discoverTools } from "./lib/mcp/tools.js";
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -39,6 +40,7 @@ window.addEventListener("DOMContentLoaded", () => {
     toolDiscoveryError: null,
     dashboardConnectionView: null,
     showConnectForm: false,
+    pendingPasswordAssessment: null,
   };
 
   badge.textContent = isTauriRuntime
@@ -856,6 +858,55 @@ window.addEventListener("DOMContentLoaded", () => {
     };
   }
 
+  function getPasswordAssessmentDisplay(assessment) {
+    if (!assessment) {
+      return {
+        tone: "muted",
+        headline: "Sin evaluar",
+        summary: "Todavia no hay una evaluacion guardada de la clave Wi-Fi real de esta red.",
+        recommendations: [
+          "Conectate a la red desde la aplicacion para analizar la robustez de la clave sin guardar la contrasena en texto plano.",
+        ],
+        facts: [
+          { label: "Longitud", value: "Sin dato" },
+          { label: "Variedad", value: "Sin dato" },
+          { label: "Patrones", value: "Sin dato" },
+        ],
+      };
+    }
+
+    if (!assessment.applicable) {
+      return {
+        tone: "muted",
+        headline: assessment.headline,
+        summary: assessment.summary,
+        recommendations: assessment.recommendations ?? [],
+        facts: [
+          { label: "Longitud", value: "No aplica" },
+          { label: "Variedad", value: "No aplica" },
+          { label: "Patrones", value: "No aplica" },
+        ],
+      };
+    }
+
+      return {
+        tone: assessment.tone ?? "muted",
+        headline: assessment.headline ?? "Sin evaluar",
+        summary: assessment.summary ?? "Sin resumen disponible.",
+        recommendations: assessment.recommendations ?? [],
+        facts: [
+          { label: "Longitud", value: `${assessment.details?.length ?? 0} caracteres` },
+          { label: "Entropia estimada", value: `${assessment.details?.entropyBits ?? 0} bits` },
+          {
+            label: "Patrones",
+            value: assessment.details?.hasSequentialPattern || assessment.details?.hasRepeatedCharacters || assessment.details?.hasRepeatedBlocks || assessment.details?.containsCommonTerm || assessment.details?.containsNetworkTerm
+              ? "Se han detectado"
+              : "No evidentes",
+          },
+        ],
+      };
+    }
+
   function sumNetworkMetric(networks, metricName) {
     return networks.reduce((total, network) => {
       const value = Number(network?.[metricName] ?? 0);
@@ -1015,6 +1066,18 @@ window.addEventListener("DOMContentLoaded", () => {
       },
       connectionSourceJobId: latestConnectionJob.jobId,
     });
+
+    if (
+      latestConnectionJob.toolName === "connect_to_target_network" &&
+      normalized.connected &&
+      uiState.pendingPasswordAssessment
+    ) {
+      updateTargetNetwork({
+        passwordAssessment: uiState.pendingPasswordAssessment,
+        passwordAssessmentUpdatedAt: new Date().toISOString(),
+      });
+      uiState.pendingPasswordAssessment = null;
+    }
   }
 
   function syncRouterProfileFromJobs(state) {
@@ -1152,6 +1215,7 @@ window.addEventListener("DOMContentLoaded", () => {
     clearButton?.addEventListener("click", () => {
       clearTargetNetwork();
       uiState.showConnectForm = false;
+      uiState.pendingPasswordAssessment = null;
       activateView("dashboard");
     });
 
@@ -1196,6 +1260,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
       const passwordInput = document.querySelector("#target-network-password");
       const password = passwordInput?.value ?? "";
+      uiState.pendingPasswordAssessment = analyzeWifiPasswordStrength(password, selectedNetwork);
 
       try {
         const job = await executeTool("connect_to_target_network", {
@@ -1207,6 +1272,7 @@ window.addEventListener("DOMContentLoaded", () => {
         uiState.selectedJobId = job.jobId;
         renderDashboard(getState());
       } catch (error) {
+        uiState.pendingPasswordAssessment = null;
         console.error("No se pudo lanzar la conexion Wi-Fi:", error);
       }
     });
@@ -1785,6 +1851,8 @@ window.addEventListener("DOMContentLoaded", () => {
     const managementServicesNormalized = managementServicesResult?.normalized ?? null;
     const managementServicesAssessment = assessManagementServicesRisk(managementServicesResult);
     const managementServicesExecutionState = getToolExecutionState(state, "detect_management_services");
+    const passwordAssessment = targetContext.targetNetwork?.passwordAssessment ?? null;
+    const passwordAssessmentDisplay = getPasswordAssessmentDisplay(passwordAssessment);
     const detectedManagementServices = (managementServicesNormalized?.services ?? [])
       .filter((service) => service?.reachable);
     const openPorts = routerProfile?.open_ports ?? [];
@@ -1849,6 +1917,39 @@ window.addEventListener("DOMContentLoaded", () => {
 
     scanNetworksFeature.innerHTML = `
       <div class="target-profile">
+        <section class="profile-panel">
+          <div class="feature-subheading">
+            <h4>Evaluar robustez de la clave Wi-Fi</h4>
+            <span class="signal-pill signal-pill--${escapeHtml(passwordAssessmentDisplay.tone)}">${escapeHtml(passwordAssessmentDisplay.headline)}</span>
+          </div>
+          <div class="security-assessment-layout">
+            <div class="security-assessment-summary">
+              <p>${escapeHtml(passwordAssessmentDisplay.summary)}</p>
+            </div>
+            <div class="security-assessment-grid">
+              ${passwordAssessmentDisplay.facts
+                .map(
+                  (fact) => `
+                    <article class="profile-highlight-card">
+                      <span>${escapeHtml(fact.label)}</span>
+                      <strong>${escapeHtml(fact.value)}</strong>
+                    </article>
+                  `,
+                )
+                .join("")}
+            </div>
+            <div class="security-assessment-grid">
+              <article class="profile-highlight-card">
+                <span>Recomendaciones</span>
+                <small>Esta evaluacion se hace en local y solo guarda el diagnostico, no la contrasena en texto plano.</small>
+                <ul class="assessment-list">
+                  ${passwordAssessmentDisplay.recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+                </ul>
+              </article>
+            </div>
+          </div>
+        </section>
+
         <section class="profile-panel">
           <div class="feature-subheading">
             <h4>Identificar el router</h4>
@@ -2404,6 +2505,8 @@ window.addEventListener("DOMContentLoaded", () => {
           upnpSourceJobId: null,
           managementServices: null,
           managementServicesSourceJobId: null,
+          passwordAssessment: null,
+          passwordAssessmentUpdatedAt: null,
           connection: null,
           connectionSourceJobId: null,
           routerProfile: null,
@@ -2570,6 +2673,7 @@ window.addEventListener("DOMContentLoaded", () => {
     clearTargetButton?.addEventListener("click", () => {
       clearTargetNetwork();
       uiState.showConnectForm = false;
+      uiState.pendingPasswordAssessment = null;
       uiState.selectedJobId = null;
       uiState.dashboardConnectionView = null;
       activateView("dashboard");
@@ -2580,6 +2684,7 @@ window.addEventListener("DOMContentLoaded", () => {
       stopAllPolling();
       clearApplicationState();
       uiState.showConnectForm = false;
+      uiState.pendingPasswordAssessment = null;
       uiState.selectedJobId = null;
       uiState.dashboardConnectionView = null;
       activateView("dashboard");

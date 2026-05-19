@@ -121,6 +121,51 @@ const SECURITY_SCORING_RULES = [
     },
   },
   {
+    id: "wifi_password_strength",
+    title: "Robustez de la clave Wi-Fi",
+    pendingLabel: "Conectarte desde la aplicacion con la clave real para poder evaluar su robustez.",
+    evaluate: (context) => {
+      const assessment = context?.targetNetwork?.passwordAssessment ?? null;
+      if (!assessment) {
+        return unknownRuleResult("Todavia no hay una evaluacion de la clave Wi-Fi.");
+      }
+
+      if (!assessment.applicable) {
+        return positiveRuleResult(
+          "Sin clave aplicable",
+          "La evaluacion de clave no aplica a esta red porque no se ha tratado como una red protegida con password.",
+        );
+      }
+
+      if (!assessment.provided) {
+        return unknownRuleResult("La aplicacion todavia no ha confirmado una clave Wi-Fi valida para esta red.");
+      }
+
+      if ((assessment.score ?? 0) >= 80) {
+        return positiveRuleResult(
+          "Clave robusta",
+          "La clave Wi-Fi analizada tiene una longitud y una complejidad razonables para esta revision.",
+        );
+      }
+
+      if ((assessment.score ?? 0) >= 55) {
+        return warningRuleResult(
+          "Clave mejorable",
+          "La clave Wi-Fi no parece trivial, pero todavia podria reforzarse para resistir mejor ataques de adivinacion o diccionario.",
+          -0.7,
+          assessment.recommendations ?? [],
+        );
+      }
+
+      return negativeRuleResult(
+        "Clave debil",
+        "La clave Wi-Fi analizada parece demasiado predecible o corta para el nivel de proteccion deseable.",
+        -1.7,
+        assessment.recommendations ?? [],
+      );
+    },
+  },
+  {
     id: "wps_exposure",
     title: "Exposicion WPS",
     pendingLabel: "Ejecutar la comprobacion WPS para saber si esta superficie esta activa.",

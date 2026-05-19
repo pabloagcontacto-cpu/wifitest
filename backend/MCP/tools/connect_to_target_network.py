@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import time
 from typing import Any
 
 from tools.helpers import (
@@ -14,6 +15,35 @@ from tools.helpers import (
     run_command,
     utc_now_iso,
 )
+
+
+def wait_for_target_ssid(
+    interface: str,
+    requested_ssid: str,
+    attempts: int = 3,
+    settle_seconds: float = 2.0,
+) -> tuple[list[str], str]:
+    """
+    Give NetworkManager a short window to rediscover the target SSID.
+
+    This is specially useful after switching the card back from monitor mode,
+    where the first rescan can happen before the managed stack is fully ready.
+    """
+    latest_visible_ssids: list[str] = []
+    diagnostics: list[str] = []
+
+    for attempt in range(1, attempts + 1):
+        rescan_output = rescan_wifi_networks(interface, settle_seconds=settle_seconds)
+        visible_ssids = list_visible_wifi_ssids(interface)
+        latest_visible_ssids = visible_ssids
+        diagnostics.append(
+            f"attempt={attempt} rescan_output={rescan_output or '<empty>'} visible_ssids={visible_ssids}"
+        )
+        if requested_ssid in visible_ssids:
+            return latest_visible_ssids, "\n".join(diagnostics)
+        time.sleep(1)
+
+    return latest_visible_ssids, "\n".join(diagnostics)
 
 
 def classify_connection_failure(error_text: str) -> tuple[str, str]:
@@ -51,8 +81,13 @@ def connect_to_target_network_execute(input: dict[str, Any]) -> dict[str, Any]:
     interface_details = ensure_interface_mode(requested_interface, "managed")
     resolved_interface = interface_details["resolved_interface"]
     reconnect_interface_with_networkmanager(resolved_interface)
-    rescan_output = rescan_wifi_networks(resolved_interface)
-    visible_ssids = list_visible_wifi_ssids(resolved_interface)
+    time.sleep(2)
+    visible_ssids, rescan_diagnostics = wait_for_target_ssid(
+        resolved_interface,
+        requested_ssid,
+        attempts=4,
+        settle_seconds=2.5,
+    )
 
     command = [
         "nmcli",
@@ -76,7 +111,7 @@ def connect_to_target_network_execute(input: dict[str, Any]) -> dict[str, Any]:
         diagnostic = {
             "requested_ssid": requested_ssid,
             "visible_ssids": visible_ssids,
-            "rescan_output": rescan_output or "<empty>",
+            "rescan_diagnostics": rescan_diagnostics or "<empty>",
         }
         return {
             "raw_text": (
@@ -107,14 +142,14 @@ def connect_to_target_network_execute(input: dict[str, Any]) -> dict[str, Any]:
         raw_command_output = "\n".join(
             part
             for part in [
-                rescan_output,
+                rescan_diagnostics,
                 completed.stdout.strip(),
                 completed.stderr.strip(),
             ]
             if part
         )
     except Exception as exc:
-        raw_command_output = "\n".join(part for part in [rescan_output, str(exc)] if part)
+        raw_command_output = "\n".join(part for part in [rescan_diagnostics, str(exc)] if part)
         failure_stage, failure_reason = classify_connection_failure(raw_command_output)
         snapshot = get_managed_connection_snapshot(resolved_interface, requested_ssid)
 

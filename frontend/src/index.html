@@ -28,7 +28,7 @@
             <strong>Dashboard</strong>
           </button>
 
-          <button class="nav-tab" data-view="mcp" type="button">
+          <button class="nav-tab" data-view="mcp" type="button" hidden>
             <strong>MCP</strong>
           </button>
 
@@ -68,7 +68,7 @@
               </p>
             </div>
             <div class="hero-metrics">
-              <article class="metric-card">
+              <article class="metric-card" hidden>
                 <span class="metric-label">Escaneos activos</span>
                 <strong id="metric-active-jobs">0</strong>
                 <p>Procesos en curso y comprobaciones abiertas en este momento.</p>
@@ -83,7 +83,7 @@
                 <strong id="metric-security-coverage">-</strong>
                 <p>Porcentaje de factores de seguridad que ya han sido evaluados sobre la red fijada.</p>
               </article>
-              <article class="metric-card">
+              <article class="metric-card" hidden>
                 <span class="metric-label">Tools cargadas</span>
                 <strong id="metric-tools-count">0</strong>
                 <p>Herramientas disponibles para lanzar desde la interfaz.</p>
@@ -100,7 +100,7 @@
           </div>
         </section>
 
-        <section class="view-panel" data-panel="mcp">
+        <section class="view-panel" data-panel="mcp" hidden>
           <div class="dashboard-layout">
             <div id="dashboard-top-grid" class="dashboard-top-grid">
               <article class="surface-card dashboard-tool-browser">

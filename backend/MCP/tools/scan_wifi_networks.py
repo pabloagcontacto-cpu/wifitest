@@ -11,7 +11,13 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from tools.helpers import ensure_interface_mode, run_command, utc_now_iso
+from tools.helpers import (
+    capture_managed_restore_context,
+    ensure_interface_mode,
+    restore_managed_connection,
+    run_command,
+    utc_now_iso,
+)
 
 AIRODUMP_CSV_SUFFIX = "-01.csv"
 NOT_ASSOCIATED_BSSID = "(not associated)"
@@ -224,43 +230,48 @@ def scan_wifi_networks_execute(input: dict[str, Any]) -> dict[str, Any]:
             "Install aircrack-ng before using this tool."
         )
 
-    interface_details = ensure_interface_mode(requested_interface, "monitor")
-    interface = interface_details["resolved_interface"]
-    interface_snapshot = run_command(["iw", "dev"], check=False).stdout.strip()
+    restore_context = capture_managed_restore_context(requested_interface)
 
-    with tempfile.TemporaryDirectory(prefix="wifitest_scan_") as temp_dir:
-        output_prefix = Path(temp_dir) / "scan"
-        csv_path = Path(f"{output_prefix}{AIRODUMP_CSV_SUFFIX}")
-        command = build_airodump_command(interface, band, output_prefix)
+    try:
+        interface_details = ensure_interface_mode(requested_interface, "monitor")
+        interface = interface_details["resolved_interface"]
+        interface_snapshot = run_command(["iw", "dev"], check=False).stdout.strip()
 
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            start_new_session=True,
-        )
+        with tempfile.TemporaryDirectory(prefix="wifitest_scan_") as temp_dir:
+            output_prefix = Path(temp_dir) / "scan"
+            csv_path = Path(f"{output_prefix}{AIRODUMP_CSV_SUFFIX}")
+            command = build_airodump_command(interface, band, output_prefix)
 
-        stdout_text = ""
-        stderr_text = ""
-
-        try:
-            stdout_text, stderr_text = process.communicate(timeout=scan_seconds)
-        except subprocess.TimeoutExpired:
-            stop_capture_process(process)
-            stdout_text, stderr_text = process.communicate()
-
-        if not csv_path.exists():
-            raise RuntimeError(
-                "airodump-ng did not generate the expected CSV output file. "
-                "Make sure the wireless interface is in monitor mode and can capture traffic. "
-                f"Command: {' '.join(command)} | returncode={process.returncode} | "
-                f"stderr={tail_text(stderr_text.strip()) or '<empty>'} | "
-                f"stdout={tail_text(stdout_text.strip()) or '<empty>'}"
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                start_new_session=True,
             )
 
-        raw_csv = csv_path.read_text(encoding="utf-8")
-        networks, clients = parse_airodump_csv(csv_path, include_hidden)
+            stdout_text = ""
+            stderr_text = ""
+
+            try:
+                stdout_text, stderr_text = process.communicate(timeout=scan_seconds)
+            except subprocess.TimeoutExpired:
+                stop_capture_process(process)
+                stdout_text, stderr_text = process.communicate()
+
+            if not csv_path.exists():
+                raise RuntimeError(
+                    "airodump-ng did not generate the expected CSV output file. "
+                    "Make sure the wireless interface is in monitor mode and can capture traffic. "
+                    f"Command: {' '.join(command)} | returncode={process.returncode} | "
+                    f"stderr={tail_text(stderr_text.strip()) or '<empty>'} | "
+                    f"stdout={tail_text(stdout_text.strip()) or '<empty>'}"
+                )
+
+            raw_csv = csv_path.read_text(encoding="utf-8")
+            networks, clients = parse_airodump_csv(csv_path, include_hidden)
+    finally:
+        restore_managed_connection(requested_interface, restore_context)
 
     raw_text = raw_csv
     if len(networks) == 0:
