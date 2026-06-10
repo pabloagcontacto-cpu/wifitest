@@ -7,11 +7,55 @@ from typing import Any
 from uuid import uuid4
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.middleware.cors import CORSMiddleware
 import uvicorn
 
 from redis_queue import create_job, enqueue_job, get_job, get_redis_client
 from serializer import serializer
+
+
+DEFAULT_MCP_ALLOWED_HOSTS = [
+    "127.0.0.1:*",
+    "localhost:*",
+    "[::1]:*",
+]
+DEFAULT_MCP_ALLOWED_ORIGINS = [
+    "http://127.0.0.1:*",
+    "http://localhost:*",
+    "http://[::1]:*",
+    "http://tauri.localhost",
+    "tauri://localhost",
+    "tauri://localhost:*",
+    "null",
+]
+
+
+def parse_csv_env_list(name: str, defaults: list[str]) -> list[str]:
+    """Read a comma-separated env list while preserving sane defaults."""
+    extras = [
+        item.strip()
+        for item in os.getenv(name, "").split(",")
+        if item.strip()
+    ]
+    values: list[str] = []
+    for item in [*defaults, *extras]:
+        if item not in values:
+            values.append(item)
+    return values
+
+
+def build_transport_security_settings() -> TransportSecuritySettings:
+    """Allow local browser/Tauri origins while keeping host/origin checks enabled."""
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=os.getenv(
+            "MCP_DNS_REBINDING_PROTECTION",
+            "1",
+        ).strip() != "0",
+        allowed_hosts=parse_csv_env_list("MCP_ALLOWED_HOSTS", DEFAULT_MCP_ALLOWED_HOSTS),
+        allowed_origins=parse_csv_env_list("MCP_ALLOWED_ORIGINS", DEFAULT_MCP_ALLOWED_ORIGINS),
+    )
+
 
 mcp = FastMCP(
     name="WIFITEST",
@@ -24,6 +68,7 @@ mcp = FastMCP(
     streamable_http_path=os.getenv("MCP_STREAMABLE_HTTP_PATH", "/mcp"),
     stateless_http=True,
     json_response=True,
+    transport_security=build_transport_security_settings(),
 )
 
 
