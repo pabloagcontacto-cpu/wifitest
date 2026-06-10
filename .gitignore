@@ -1,2 +1,10 @@
 ASM_MCP/
 scripts/dump.rdb
+.venv/
+__pycache__/
+*.py[cod]
+chat_service/.venv/
+chat_service/__pycache__/
+chat_service/.env
+backend/MCP/.env
+config/local.json

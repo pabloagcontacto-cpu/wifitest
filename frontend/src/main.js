@@ -7,10 +7,13 @@ import {
   setTools,
   subscribe,
   updateTargetNetwork,
+  upsertJob,
 } from "./lib/mcp/store.js";
 import { computeTargetSecurityScore } from "./lib/security/scoring.js";
 import { analyzeWifiPasswordStrength } from "./lib/security/password-strength.js";
+import { loadRuntimeConfig } from "./lib/contracts/contracts.js";
 import { discoverTools } from "./lib/mcp/tools.js";
+import { chatServiceClient } from "./lib/chat/client.js";
 
 window.addEventListener("DOMContentLoaded", () => {
   const badge = document.querySelector("#runtime-badge");
@@ -32,7 +35,19 @@ window.addEventListener("DOMContentLoaded", () => {
   const securityScoreMetric = document.querySelector("#metric-security-score");
   const securityCoverageMetric = document.querySelector("#metric-security-coverage");
   const toolsCountMetric = document.querySelector("#metric-tools-count");
+  const chatStatusPill = document.querySelector("#chat-status-pill");
+  const chatStatusText = document.querySelector("#chat-status-text");
+  const chatMessages = document.querySelector("#chat-messages");
+  const chatTargetCandidates = document.querySelector("#chat-target-candidates");
+  const chatMessageForm = document.querySelector("#chat-message-form");
+  const chatMessageInput = document.querySelector("#chat-message-input");
+  const chatSendButton = document.querySelector("#chat-send-button");
+  const chatConversationsList = document.querySelector("#chat-conversations-list");
+  const chatNewConversationButton = document.querySelector("#chat-new-conversation-button");
+  const chatDeleteConversationButton = document.querySelector("#chat-delete-conversation-button");
+  const chatClearConversationsButton = document.querySelector("#chat-clear-conversations-button");
   const isTauriRuntime = Boolean(window.__TAURI__);
+  let runtimeConfig = {};
 
   const uiState = {
     selectedJobId: null,
@@ -41,11 +56,29 @@ window.addEventListener("DOMContentLoaded", () => {
     dashboardConnectionView: null,
     showConnectForm: false,
     pendingPasswordAssessment: null,
+    chat: {
+      conversations: [],
+      messages: [],
+      activeConversationId: null,
+      status: "idle",
+      statusText: "Preparando el servicio de chat...",
+      isSending: false,
+      stream: null,
+    },
   };
 
   badge.textContent = isTauriRuntime
     ? "Runtime Tauri activo"
     : "Vista web cargada";
+
+  function getDefaultWifiInterface() {
+    const configuredInterface = runtimeConfig.default_wifi_interface;
+    if (typeof configuredInterface === "string" && configuredInterface.trim() !== "") {
+      return configuredInterface.trim();
+    }
+
+    return "wlan0";
+  }
 
   function activateView(viewName) {
     navTabs.forEach((tab) => {
@@ -73,6 +106,540 @@ window.addEventListener("DOMContentLoaded", () => {
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#39;");
+  }
+
+  function formatChatTime(epochMs) {
+    const timestamp = Number(epochMs);
+    if (!Number.isFinite(timestamp) || timestamp <= 0) {
+      return "";
+    }
+    return new Intl.DateTimeFormat("es-ES", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(timestamp));
+  }
+
+  function getChatErrorMessage(error) {
+    const rawMessage = error instanceof Error ? error.message : String(error ?? "");
+    if (!rawMessage || rawMessage === "Load failed" || rawMessage.includes("Failed to fetch")) {
+      return "No se pudo conectar con el servicio de chat en 127.0.0.1:8796. Arranca ./scripts/dev-stack.sh o ./chat_service/runChatService.sh.";
+    }
+    return rawMessage;
+  }
+
+  function setChatStatus(status, text) {
+    uiState.chat.status = status;
+    uiState.chat.statusText = text;
+    renderChat();
+  }
+
+  function closeChatStream() {
+    if (uiState.chat.stream) {
+      uiState.chat.stream.close();
+      uiState.chat.stream = null;
+    }
+  }
+
+  function upsertChatMessage(message) {
+    if (!message?.id) {
+      return;
+    }
+    const index = uiState.chat.messages.findIndex((item) => item.id === message.id);
+    if (index >= 0) {
+      uiState.chat.messages[index] = message;
+      return;
+    }
+    uiState.chat.messages.push(message);
+  }
+
+  function normalizeChatResolvedJob(job) {
+    const jobId = job?.job_id ?? job?.jobId ?? null;
+    if (!jobId) {
+      return null;
+    }
+
+    return {
+      localRequestId: `chat-${jobId}`,
+      source: "chat",
+      jobId,
+      toolName: job?.tool ?? job?.tool_name ?? job?.toolName ?? null,
+      status: job?.status ?? "completed",
+      input: job?.input ?? null,
+      result: job?.result ?? null,
+      error: job?.error ?? null,
+      submittedAt: job?.submitted_at ?? job?.submittedAt ?? null,
+      startedAt: job?.started_at ?? job?.startedAt ?? null,
+      finishedAt: job?.finished_at ?? job?.finishedAt ?? new Date().toISOString(),
+      resourceUri: job?.resource ?? `job://${jobId}`,
+    };
+  }
+
+  function applyResolvedJobsToGlobalState(jobs) {
+    if (!Array.isArray(jobs)) {
+      return [];
+    }
+
+    const savedJobs = [];
+    jobs.forEach((job) => {
+      const normalizedJob = normalizeChatResolvedJob(job);
+      if (!normalizedJob) {
+        return;
+      }
+      savedJobs.push(upsertJob(normalizedJob));
+    });
+    return savedJobs;
+  }
+
+  function summarizeJobForChatContext(job) {
+    const normalized = job.result?.normalized ?? null;
+    if (!normalized) {
+      return null;
+    }
+
+    if (job.toolName === "scan_wifi_networks") {
+      return {
+        interface: normalized.interface ?? job.input?.interface ?? null,
+        networks_count: normalized.networks_count ?? normalized.networks?.length ?? 0,
+        clients_count: normalized.clients_count ?? normalized.clients?.length ?? 0,
+        networks: (normalized.networks ?? []).slice(0, 12).map((network) => ({
+          ssid: network.ssid ?? "",
+          bssid: network.bssid ?? "",
+          channel: network.channel ?? null,
+          frequency_band: network.frequency_band ?? null,
+          security: network.security ?? null,
+          signal: network.signal ?? null,
+        })),
+      };
+    }
+
+    return normalized;
+  }
+
+  function buildChatGlobalContext(state) {
+    const targetContext = getTargetContext(state);
+    const targetNetwork = targetContext.targetNetwork;
+    const securityScore = targetNetwork ? computeTargetSecurityScore(targetContext) : null;
+    const recentJobs = Object.values(state.jobs)
+      .sort((left, right) => {
+        const leftTime = new Date(left.finishedAt ?? left.submittedAt ?? 0).getTime();
+        const rightTime = new Date(right.finishedAt ?? right.submittedAt ?? 0).getTime();
+        return rightTime - leftTime;
+      })
+      .slice(0, 8)
+      .map((job) => ({
+        job_id: job.jobId,
+        tool: job.toolName,
+        status: job.status,
+        source: job.source ?? "manual",
+        input: job.input ?? null,
+        result_summary: summarizeJobForChatContext(job),
+        error: job.error ?? null,
+        finished_at: job.finishedAt ?? null,
+      }));
+
+    return {
+      schema_version: 1,
+      source: "wifitest-frontend",
+      generated_at: new Date().toISOString(),
+      target_network: targetNetwork
+        ? {
+            target_ssid: targetContext.targetSsid,
+            interface: targetContext.interface,
+            selected_network: targetContext.primaryNetwork,
+            related_networks_count: targetContext.relatedNetworks.length,
+            target_bssids: targetContext.targetBssids,
+            connection: targetContext.connection,
+            completed_checks: {
+              scan: Boolean(targetNetwork.scanResult?.normalized),
+              profile: Boolean(targetNetwork.profile?.normalized),
+              wps: Boolean(targetNetwork.wps?.normalized),
+              router_profile: Boolean(targetNetwork.routerProfile?.normalized),
+              upnp: Boolean(targetNetwork.upnp?.normalized),
+              management_services: Boolean(targetNetwork.managementServices?.normalized),
+            },
+            security_score: securityScore
+              ? {
+                  score: securityScore.score,
+                  score_max: securityScore.scoreMax,
+                  coverage_percent: securityScore.coveragePercent,
+                  tone: securityScore.tone,
+                  findings: securityScore.findings.slice(0, 5),
+                  pending_checks: securityScore.pendingChecks.slice(0, 5),
+                }
+              : null,
+          }
+        : null,
+      recent_jobs: recentJobs,
+      user_action_reminders: [
+        "El agente no puede fijar la red objetivo por MCP.",
+        "Si se han listado redes con scan_wifi_networks, el usuario debe fijar manualmente la red objetivo desde Dashboard o desde los botones del Chat.",
+      ],
+    };
+  }
+
+  function setTargetNetworkFromScanJob(scanJob, selectedNetwork) {
+    if (!scanJob?.result || !selectedNetwork) {
+      return;
+    }
+
+    const networks = scanJob.result?.normalized?.networks ?? [];
+    const relatedNetworks = selectedNetwork?.ssid
+      ? networks.filter((network) => network.ssid === selectedNetwork.ssid)
+      : [selectedNetwork];
+
+    setTargetNetwork({
+      toolName: "scan_wifi_networks",
+      sourceJobId: scanJob.jobId,
+      fixedAt: new Date().toISOString(),
+      targetSsid: selectedNetwork.ssid ?? "",
+      interface:
+        scanJob.result?.normalized?.interface ??
+        scanJob.input?.interface ??
+        null,
+      selectedNetwork,
+      relatedNetworks,
+      scanResult: scanJob.result,
+      profile: null,
+      profileSourceJobId: null,
+      wps: null,
+      wpsSourceJobId: null,
+      upnp: null,
+      upnpSourceJobId: null,
+      managementServices: null,
+      managementServicesSourceJobId: null,
+      adminCredentialsAssessment: null,
+      passwordAssessment: null,
+      passwordAssessmentUpdatedAt: null,
+      connection: null,
+      connectionSourceJobId: null,
+      routerProfile: null,
+      routerProfileSourceJobId: null,
+    });
+
+    uiState.dashboardConnectionView = "not_connected";
+    uiState.selectedJobId = scanJob.jobId;
+  }
+
+  function renderChatTargetCandidates() {
+    if (!chatTargetCandidates) {
+      return;
+    }
+
+    const state = getState();
+    const latestScanJob = getLatestJobByTool(state, "scan_wifi_networks");
+    const networks = latestScanJob?.result?.normalized?.networks ?? [];
+
+    if (!latestScanJob || latestScanJob.status !== "completed" || !networks.length) {
+      chatTargetCandidates.innerHTML = "";
+      return;
+    }
+
+    const currentTargetBssid = state.targetNetwork?.selectedNetwork?.bssid ?? null;
+    chatTargetCandidates.innerHTML = `
+      <div class="chat-target-panel">
+        <div>
+          <span class="message-role">Red objetivo</span>
+          <p>El agente no puede fijarla por MCP. Elige manualmente una red detectada para continuar la auditoria.</p>
+        </div>
+        <div class="chat-target-list">
+          ${networks.slice(0, 8).map((network) => {
+            const bssid = network.bssid ?? "";
+            const isFixed = currentTargetBssid && currentTargetBssid === bssid;
+            return `
+              <button
+                type="button"
+                class="chat-target-item ${isFixed ? "is-active" : ""}"
+                data-chat-fix-network-bssid="${escapeHtml(bssid)}"
+              >
+                <strong>${escapeHtml(network.ssid || "(Oculta)")}</strong>
+                <span>${escapeHtml([network.bssid, network.security, network.frequency_band, network.channel ? `Canal ${network.channel}` : null].filter(Boolean).join(" · "))}</span>
+              </button>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    `;
+
+    chatTargetCandidates.querySelectorAll("[data-chat-fix-network-bssid]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const selectedNetwork = networks.find(
+          (network) => network.bssid === button.dataset.chatFixNetworkBssid,
+        );
+        setTargetNetworkFromScanJob(latestScanJob, selectedNetwork);
+        setChatStatus("connected", "Red objetivo fijada desde el Chat.");
+        renderDashboard(getState());
+      });
+    });
+  }
+
+  function renderChat() {
+    if (chatStatusPill) {
+      const labels = {
+        idle: "Listo",
+        loading: "Cargando",
+        connected: "Conectado",
+        responding: "Respondiendo",
+        error: "Error",
+      };
+      chatStatusPill.textContent = labels[uiState.chat.status] ?? "Chat";
+      chatStatusPill.className = `pill chat-pill chat-pill--${uiState.chat.status}`;
+    }
+
+    if (chatStatusText) {
+      chatStatusText.textContent = uiState.chat.statusText;
+    }
+
+    if (chatConversationsList) {
+      chatConversationsList.innerHTML = uiState.chat.conversations.length
+        ? uiState.chat.conversations.map((conversation) => {
+            const isActive = conversation.id === uiState.chat.activeConversationId;
+            return `
+              <button
+                type="button"
+                class="chat-conversation-item ${isActive ? "is-active" : ""}"
+                data-chat-conversation-id="${escapeHtml(conversation.id)}"
+              >
+                <strong>${escapeHtml(conversation.title || "Nueva conversacion")}</strong>
+                <span>${escapeHtml(formatChatTime(conversation.updated_at))}</span>
+              </button>
+            `;
+          }).join("")
+        : `<p class="chat-empty">No hay conversaciones todavia.</p>`;
+
+      chatConversationsList.querySelectorAll("[data-chat-conversation-id]").forEach((button) => {
+        button.addEventListener("click", () => {
+          selectChatConversation(button.dataset.chatConversationId);
+        });
+      });
+    }
+
+    if (chatMessages) {
+      if (!uiState.chat.activeConversationId) {
+        chatMessages.innerHTML = `
+          <div class="chat-empty-state">
+            <h4>Empieza una conversacion</h4>
+            <p>El asistente puede pedir tools MCP, esperar sus jobs y continuar con los resultados.</p>
+          </div>
+        `;
+      } else if (!uiState.chat.messages.length) {
+        chatMessages.innerHTML = `
+          <div class="message assistant">
+            <span class="message-role">WIFITEST</span>
+            <p>Listo. Preguntame que quieres revisar y usare las herramientas disponibles cuando haga falta.</p>
+          </div>
+        `;
+      } else {
+        chatMessages.innerHTML = uiState.chat.messages.map((message) => {
+          const role = message.role === "user" ? "user" : "assistant";
+          const roleLabel = role === "user" ? "Usuario" : "WIFITEST";
+          return `
+            <div class="message ${role}">
+              <div class="message-meta">
+                <span class="message-role">${escapeHtml(roleLabel)}</span>
+                <time>${escapeHtml(formatChatTime(message.created_at))}</time>
+              </div>
+              <p>${escapeHtml(message.content || "")}</p>
+            </div>
+          `;
+        }).join("");
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    }
+
+    if (chatSendButton) {
+      chatSendButton.disabled = uiState.chat.isSending;
+      chatSendButton.textContent = uiState.chat.isSending ? "Enviando..." : "Enviar";
+    }
+
+    renderChatTargetCandidates();
+  }
+
+  function handleChatStatusEvent(data) {
+    const type = data?.type;
+    if (type === "connected") {
+      setChatStatus("connected", "Stream SSE conectado.");
+      return;
+    }
+    if (type === "turn_queued") {
+      setChatStatus("responding", "Turno encolado. Esperando al worker...");
+      return;
+    }
+    if (type === "turn_started") {
+      setChatStatus("responding", "El worker esta procesando el turno.");
+      return;
+    }
+    if (type === "model_responding") {
+      setChatStatus("responding", "OpenAI esta razonando con el MCP disponible.");
+      return;
+    }
+    if (type === "mcp_available") {
+      setChatStatus("responding", `MCP disponible: ${data.server_label ?? "wifitest-mcp"}.`);
+      return;
+    }
+    if (type === "tool_jobs_resolved") {
+      const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+      applyResolvedJobsToGlobalState(jobs);
+      const tools = jobs.map((job) => job.tool).filter(Boolean);
+      const summary = tools.length ? ` (${tools.join(", ")})` : "";
+      setChatStatus("responding", `Jobs MCP resueltos: ${data.count ?? 0}${summary}.`);
+      return;
+    }
+    if (type === "turn_completed") {
+      setChatStatus("connected", "Respuesta completada.");
+      return;
+    }
+    if (type === "turn_failed") {
+      setChatStatus("error", data.friendly_error || data.error || "El turno ha fallado.");
+      return;
+    }
+    if (type === "conversation_deleted") {
+      setChatStatus("connected", "Conversacion eliminada.");
+      return;
+    }
+    if (type === "conversation_created") {
+      setChatStatus("connected", "Conversacion creada.");
+    }
+  }
+
+  async function refreshChatConversations() {
+    const payload = await chatServiceClient.listConversations();
+    uiState.chat.conversations = Array.isArray(payload.conversations) ? payload.conversations : [];
+    return uiState.chat.conversations;
+  }
+
+  function openChatStream(conversationId) {
+    closeChatStream();
+    if (!conversationId || typeof EventSource === "undefined") {
+      return;
+    }
+
+    const stream = chatServiceClient.openEventStream(conversationId);
+    uiState.chat.stream = stream;
+
+    stream.addEventListener("status", (event) => {
+      try {
+        handleChatStatusEvent(JSON.parse(event.data));
+      } catch {
+        setChatStatus("error", "No se pudo interpretar un evento SSE.");
+      }
+    });
+
+    stream.addEventListener("message", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload?.message) {
+          upsertChatMessage(payload.message);
+          renderChat();
+        }
+      } catch {
+        setChatStatus("error", "No se pudo interpretar un mensaje SSE.");
+      }
+    });
+
+    stream.onerror = () => {
+      if (uiState.chat.activeConversationId === conversationId) {
+        setChatStatus("error", "Se ha perdido la conexion SSE con el chat.");
+      }
+    };
+  }
+
+  async function loadChatMessages(conversationId) {
+    const payload = await chatServiceClient.listMessages(conversationId);
+    uiState.chat.messages = Array.isArray(payload.messages) ? payload.messages : [];
+  }
+
+  async function selectChatConversation(conversationId) {
+    if (!conversationId || conversationId === uiState.chat.activeConversationId) {
+      return;
+    }
+
+    try {
+      setChatStatus("loading", "Cargando conversacion...");
+      uiState.chat.activeConversationId = conversationId;
+      await loadChatMessages(conversationId);
+      openChatStream(conversationId);
+      setChatStatus("connected", "Conversacion lista.");
+    } catch (error) {
+      setChatStatus("error", getChatErrorMessage(error));
+    }
+  }
+
+  async function createChatConversation() {
+    try {
+      setChatStatus("loading", "Creando conversacion...");
+      const payload = await chatServiceClient.createConversation({ title: "Conversacion WIFITEST" });
+      const conversation = payload.conversation;
+      uiState.chat.conversations = [conversation, ...uiState.chat.conversations.filter((item) => item.id !== conversation.id)];
+      uiState.chat.activeConversationId = conversation.id;
+      uiState.chat.messages = [];
+      openChatStream(conversation.id);
+      setChatStatus("connected", "Conversacion nueva lista.");
+    } catch (error) {
+      setChatStatus("error", getChatErrorMessage(error));
+      return null;
+    }
+
+    return uiState.chat.activeConversationId;
+  }
+
+  async function initializeChat() {
+    try {
+      setChatStatus("loading", "Conectando con el servicio de chat...");
+      await chatServiceClient.health();
+      await refreshChatConversations();
+
+      if (uiState.chat.conversations.length > 0) {
+        const firstConversation = uiState.chat.conversations[0];
+        uiState.chat.activeConversationId = firstConversation.id;
+        await loadChatMessages(firstConversation.id);
+        openChatStream(firstConversation.id);
+        setChatStatus("connected", "Chat conectado.");
+        return;
+      }
+
+      await createChatConversation();
+    } catch (error) {
+      setChatStatus("error", getChatErrorMessage(error));
+    }
+  }
+
+  async function deleteActiveChatConversation() {
+    const conversationId = uiState.chat.activeConversationId;
+    if (!conversationId) {
+      return;
+    }
+
+    try {
+      setChatStatus("loading", "Borrando conversacion...");
+      closeChatStream();
+      await chatServiceClient.deleteConversation(conversationId);
+      uiState.chat.activeConversationId = null;
+      uiState.chat.messages = [];
+      await refreshChatConversations();
+
+      if (uiState.chat.conversations.length > 0) {
+        await selectChatConversation(uiState.chat.conversations[0].id);
+        return;
+      }
+
+      setChatStatus("connected", "Conversacion borrada.");
+    } catch (error) {
+      setChatStatus("error", getChatErrorMessage(error));
+    }
+  }
+
+  async function clearChatConversations() {
+    try {
+      setChatStatus("loading", "Limpiando conversaciones...");
+      closeChatStream();
+      await chatServiceClient.deleteAllConversations();
+      uiState.chat.conversations = [];
+      uiState.chat.activeConversationId = null;
+      uiState.chat.messages = [];
+      setChatStatus("connected", "Historial de chat limpio.");
+    } catch (error) {
+      setChatStatus("error", getChatErrorMessage(error));
+    }
   }
 
   function getFormValuesForTool(tool) {
@@ -1337,7 +1904,7 @@ window.addEventListener("DOMContentLoaded", () => {
     disconnectNetworkButton?.addEventListener("click", async () => {
       try {
         const job = await executeTool("disconnect_from_network", {
-          interface: targetContext.interface ?? "wlan0",
+          interface: targetContext.interface ?? getDefaultWifiInterface(),
         });
         uiState.showConnectForm = false;
         uiState.selectedJobId = job.jobId;
@@ -1352,7 +1919,7 @@ window.addEventListener("DOMContentLoaded", () => {
     checkConnectionButton?.addEventListener("click", async () => {
       try {
         const job = await executeTool("get_connection_status", {
-          interface: targetContext.interface ?? "wlan0",
+          interface: targetContext.interface ?? getDefaultWifiInterface(),
           expected_ssid: targetContext.targetSsid ?? "",
         });
         uiState.selectedJobId = job.jobId;
@@ -1372,7 +1939,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
       try {
         const job = await executeTool("connect_to_target_network", {
-          interface: targetContext.interface ?? "wlan0",
+          interface: targetContext.interface ?? getDefaultWifiInterface(),
           ssid: targetContext.targetSsid ?? "",
           password,
         });
@@ -2470,7 +3037,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
       try {
         const job = await executeTool("discover_gateway_and_router_profile", {
-          interface: targetContext.interface ?? "wlan0",
+          interface: targetContext.interface ?? getDefaultWifiInterface(),
           expected_ssid: targetContext.targetSsid ?? "",
         });
         uiState.selectedJobId = job.jobId;
@@ -2488,7 +3055,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
       try {
         const job = await executeTool("detect_upnp_exposure", {
-          interface: targetContext.interface ?? "wlan0",
+          interface: targetContext.interface ?? getDefaultWifiInterface(),
           gateway_ip: routerProfile?.gateway_ip ?? connection?.gateway ?? "",
           timeout_seconds: "4",
         });
@@ -2539,7 +3106,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
       try {
         const job = await executeTool("detect_management_services", {
-          interface: targetContext.interface ?? "wlan0",
+          interface: targetContext.interface ?? getDefaultWifiInterface(),
           gateway_ip: routerProfile?.gateway_ip ?? connection?.gateway ?? "",
           timeout_seconds: "3",
         });
@@ -2721,41 +3288,7 @@ window.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
-        const relatedNetworks = selectedNetwork?.ssid
-          ? networks.filter((network) => network.ssid === selectedNetwork.ssid)
-          : [selectedNetwork];
-
-        setTargetNetwork({
-          toolName: "scan_wifi_networks",
-          sourceJobId: latestScanJob.jobId,
-          fixedAt: new Date().toISOString(),
-          targetSsid: selectedNetwork.ssid ?? "",
-          interface:
-            latestScanJob.result?.normalized?.interface ??
-            latestScanJob.input?.interface ??
-            null,
-          selectedNetwork,
-          relatedNetworks,
-          scanResult: latestScanJob.result,
-          profile: null,
-          profileSourceJobId: null,
-          wps: null,
-          wpsSourceJobId: null,
-          upnp: null,
-          upnpSourceJobId: null,
-          managementServices: null,
-          managementServicesSourceJobId: null,
-          adminCredentialsAssessment: null,
-          passwordAssessment: null,
-          passwordAssessmentUpdatedAt: null,
-          connection: null,
-          connectionSourceJobId: null,
-          routerProfile: null,
-          routerProfileSourceJobId: null,
-        });
-
-        uiState.dashboardConnectionView = "not_connected";
-        uiState.selectedJobId = latestScanJob.jobId;
+        setTargetNetworkFromScanJob(latestScanJob, selectedNetwork);
         activateView("dashboard");
       });
     });
@@ -2977,6 +3510,56 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  chatNewConversationButton?.addEventListener("click", () => {
+    createChatConversation();
+  });
+
+  chatDeleteConversationButton?.addEventListener("click", () => {
+    deleteActiveChatConversation();
+  });
+
+  chatClearConversationsButton?.addEventListener("click", () => {
+    clearChatConversations();
+  });
+
+  chatMessageForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const content = chatMessageInput?.value.trim() ?? "";
+    if (!content) {
+      return;
+    }
+
+    uiState.chat.isSending = true;
+    renderChat();
+
+    try {
+      let conversationId = uiState.chat.activeConversationId;
+      if (!conversationId) {
+        conversationId = await createChatConversation();
+      }
+
+      if (!conversationId) {
+        return;
+      }
+
+      const payload = await chatServiceClient.sendMessage(
+        conversationId,
+        content,
+        buildChatGlobalContext(getState()),
+      );
+      if (payload.message) {
+        upsertChatMessage(payload.message);
+      }
+      chatMessageInput.value = "";
+      setChatStatus("responding", "Mensaje enviado. Turno encolado.");
+    } catch (error) {
+      setChatStatus("error", getChatErrorMessage(error));
+    } finally {
+      uiState.chat.isSending = false;
+      renderChat();
+    }
+  });
+
   subscribe((state) => {
     syncTargetProfileFromJobs(state);
     syncTargetWpsFromJobs(state);
@@ -2985,19 +3568,29 @@ window.addEventListener("DOMContentLoaded", () => {
     syncConnectionFromJobs(state);
     syncRouterProfileFromJobs(state);
     renderDashboard(getState());
+    renderChat();
   });
 
-  discoverTools()
-    .then((tools) => {
-      uiState.toolDiscoveryError = null;
-      setTools(tools);
-      console.info("Tools MCP descubiertas:", tools);
+  loadRuntimeConfig()
+    .then((config) => {
+      runtimeConfig = config ?? {};
     })
     .catch((error) => {
-      uiState.toolDiscoveryError =
-        error instanceof Error ? error.message : "Error desconocido";
-      renderDashboard(getState());
-      console.error("No se pudieron descubrir las tools MCP:", error);
+      console.warn("No se pudo cargar la configuracion local:", error);
+    })
+    .finally(() => {
+      discoverTools()
+        .then((tools) => {
+          uiState.toolDiscoveryError = null;
+          setTools(tools);
+          console.info("Tools MCP descubiertas:", tools);
+        })
+        .catch((error) => {
+          uiState.toolDiscoveryError =
+            error instanceof Error ? error.message : "Error desconocido";
+          renderDashboard(getState());
+          console.error("No se pudieron descubrir las tools MCP:", error);
+        });
     });
 
   window.wifitestMcp = {
@@ -3007,7 +3600,19 @@ window.addEventListener("DOMContentLoaded", () => {
     stopPolling,
     stopAllPolling,
   };
+  window.wifitestChat = {
+    initializeChat,
+    createChatConversation,
+    selectChatConversation,
+    deleteActiveChatConversation,
+    clearChatConversations,
+  };
+
+  window.addEventListener("beforeunload", () => {
+    closeChatStream();
+  });
 
   activateView("dashboard");
   renderDashboard(getState());
+  initializeChat();
 });

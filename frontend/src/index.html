@@ -137,11 +137,10 @@
           <div class="hero-card hero-card-chat">
             <div>
               <p class="section-tag">Asistente</p>
-              <h3>Conversacion guiada sobre la seguridad Wi-Fi</h3>
+              <h3>Chat operativo con WIFITEST</h3>
               <p>
-                Habla con el asistente para resolver dudas, interpretar
-                resultados y recibir orientacion util sin tecnicismos
-                innecesarios.
+                Conversa con el asistente mientras el orquestador resuelve
+                herramientas MCP asincronas y devuelve evidencia al modelo.
               </p>
             </div>
           </div>
@@ -150,41 +149,37 @@
             <article class="surface-card chat-feed">
               <div class="card-heading">
                 <h3>Conversacion</h3>
-                <span class="pill">Preview</span>
+                <span id="chat-status-pill" class="pill">Conectando</span>
               </div>
 
-              <div class="message assistant">
-                <span class="message-role">WIFITEST</span>
-                <p>
-                  Puedo ayudarte a revisar la seguridad de tu red Wi-Fi y
-                  explicarte los resultados sin lenguaje demasiado tecnico.
-                </p>
-              </div>
+              <div id="chat-messages" class="chat-messages"></div>
+              <div id="chat-target-candidates" class="chat-target-candidates"></div>
 
-              <div class="message user">
-                <span class="message-role">Usuario</span>
-                <p>Quiero comprobar si mi red de invitados esta bien protegida.</p>
-              </div>
-
-              <div class="message assistant">
-                <span class="message-role">WIFITEST</span>
-                <p>
-                  Te guiare primero por un escaneo inicial y despues te resumire
-                  los riesgos detectados y las medidas recomendadas.
-                </p>
-              </div>
+              <form id="chat-message-form" class="chat-composer">
+                <textarea
+                  id="chat-message-input"
+                  rows="3"
+                  placeholder="Pregunta por la red objetivo, pide una comprobacion o solicita una explicacion de resultados..."
+                ></textarea>
+                <button id="chat-send-button" class="primary-action" type="submit">Enviar</button>
+              </form>
             </article>
 
             <article class="surface-card chat-side">
               <div class="card-heading">
-                <h3>Acciones futuras</h3>
-                <span class="pill">Asistencia</span>
+                <h3>Conversaciones</h3>
+                <div class="chat-side-actions">
+                  <button id="chat-new-conversation-button" class="secondary-action" type="button">Nueva</button>
+                  <button id="chat-delete-conversation-button" class="secondary-action" type="button">Borrar</button>
+                  <button id="chat-clear-conversations-button" class="danger-action" type="button">Limpiar</button>
+                </div>
               </div>
-              <ul class="feature-list">
-                <li>Resolver dudas sobre la configuracion de la red</li>
-                <li>Recibir ayuda para interpretar hallazgos</li>
-                <li>Obtener recomendaciones explicadas paso a paso</li>
-              </ul>
+              <div id="chat-conversations-list" class="chat-conversations-list"></div>
+
+              <div class="chat-status-panel">
+                <span class="message-role">Estado</span>
+                <p id="chat-status-text">Preparando el servicio de chat...</p>
+              </div>
             </article>
           </div>
         </section>

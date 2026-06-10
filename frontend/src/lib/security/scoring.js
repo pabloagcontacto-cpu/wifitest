@@ -160,7 +160,7 @@ const SECURITY_SCORING_RULES = [
       return negativeRuleResult(
         "Clave debil",
         "La clave Wi-Fi analizada parece demasiado predecible o corta para el nivel de proteccion deseable.",
-        -1.7,
+        -2.5,
         assessment.recommendations ?? [],
       );
     },

@@ -88,7 +88,7 @@ def ping(message: str | None = None) -> dict[str, Any]:
 
     Example first output:
     {
-        "job_id": "123e4567-e89b-12d3-a456-426614174000"
+        "job_id": "<job_id_real>"
     }
 
     Example final output (after the job is done and the orchestrator resends the result to you):
@@ -99,7 +99,7 @@ def ping(message: str | None = None) -> dict[str, Any]:
             "completed_at": "2026-04-14T12:00:00+00:00"
         },
         "nombreTool": "ping",
-        "job_id": "123e4567-e89b-12d3-a456-426614174000"
+        "job_id": "<job_id_real>"
     }
 
     """
@@ -122,6 +122,9 @@ def scan_wifi_networks(
     - file: /contracts/tools.json
     - this tool is designed to capture nearby networks, their beacon metadata
       and the wireless clients observed during the scan window
+    - after this tool completes, the user must manually fix the target network
+      in the WIFITEST UI before running target-specific checks; the MCP cannot
+      fix the target network on behalf of the user
 
     Example input:
     {
@@ -133,7 +136,7 @@ def scan_wifi_networks(
 
     Example first output:
     {
-        "job_id": "123e4567-e89b-12d3-a456-426614174000"
+        "job_id": "<job_id_real>"
     }
 
     Example final output shape:
@@ -150,7 +153,7 @@ def scan_wifi_networks(
             "clients": []
         },
         "nombreTool": "scan_wifi_networks",
-        "job_id": "123e4567-e89b-12d3-a456-426614174000"
+        "job_id": "<job_id_real>"
     }
     """
     return procesarTool(

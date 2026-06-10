@@ -2,20 +2,31 @@
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
 
 from tool_contracts import get_tool_input_contract
 
 
-def normalize_arg_with_default(raw_value: Any, arg_contract: dict[str, Any]) -> Any:
+def get_contract_default(arg_name: str, arg_contract: dict[str, Any]) -> Any:
+    """Return the configured default for an argument."""
+    if arg_name == "interface":
+        configured_interface = os.getenv("WIFITEST_WIFI_INTERFACE", "").strip()
+        if configured_interface != "":
+            return configured_interface
+
+    return arg_contract.get("default")
+
+
+def normalize_arg_with_default(raw_value: Any, arg_name: str, arg_contract: dict[str, Any]) -> Any:
     """
     Aplica el valor por defecto de un argumento cuando el valor recibido viene
     ausente o vacio.
 
     Esta logica aplica tanto a argumentos `fixed` como `free`.
     """
-    default_value = arg_contract.get("default")
+    default_value = get_contract_default(arg_name, arg_contract)
 
     if raw_value is None:
         return default_value
@@ -70,6 +81,7 @@ def normalize_and_validate_contract_args(
     for arg_name, arg_contract in input_contract.items():
         normalized_value = normalize_arg_with_default(
             raw_args.get(arg_name),
+            arg_name,
             arg_contract,
         )
         validate_fixed_arg(tool_name, arg_name, normalized_value, arg_contract)
