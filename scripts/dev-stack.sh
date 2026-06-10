@@ -7,6 +7,7 @@ BACKEND_DIR="$ROOT_DIR/backend/MCP"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 CHAT_SERVICE_DIR="$ROOT_DIR/chat_service"
 BACKEND_ENV_FILE="$BACKEND_DIR/.env"
+FRONTEND_BINARY_DEFAULT="$FRONTEND_DIR/src-tauri/target/release/wifitest-frontend"
 
 if [ -f "$BACKEND_ENV_FILE" ]; then
   set -a
@@ -34,6 +35,10 @@ TUNNEL_NAME="${TUNNEL_NAME:-wifitest-mcp}"
 TUNNEL_HOSTNAME="${TUNNEL_HOSTNAME:-mcp.pablotests.xyz}"
 CLOUDFLARED_CONFIG="${CLOUDFLARED_CONFIG:-$HOME/.cloudflared/config.yml}"
 CLOUDFLARED_PROTOCOL="${CLOUDFLARED_PROTOCOL:-http2}"
+FRONTEND_MODE="${FRONTEND_MODE:-dev}"
+FRONTEND_DEV_SCRIPT="${FRONTEND_DEV_SCRIPT:-dev:safe}"
+FRONTEND_BINARY="${FRONTEND_BINARY:-$FRONTEND_BINARY_DEFAULT}"
+FRONTEND_RUNTIME_SAFE="${FRONTEND_RUNTIME_SAFE:-1}"
 
 cleanup() {
   echo
@@ -250,12 +255,40 @@ run_chat_worker() {
 }
 
 run_frontend() {
-  echo "Arrancando frontend Tauri..."
-  (
-    cd "$FRONTEND_DIR"
-    exec npm run dev:safe
-  ) &
-  FRONTEND_PID=$!
+  case "$FRONTEND_MODE" in
+    dev)
+      echo "Arrancando frontend Tauri en modo dev ($FRONTEND_DEV_SCRIPT)..."
+      (
+        cd "$FRONTEND_DIR"
+        exec npm run "$FRONTEND_DEV_SCRIPT"
+      ) &
+      FRONTEND_PID=$!
+      ;;
+    binary)
+      if [ ! -x "$FRONTEND_BINARY" ]; then
+        echo "No se ha encontrado el binario del frontend en $FRONTEND_BINARY." >&2
+        echo "Ejecuta primero: ./scripts/run-app.sh" >&2
+        exit 1
+      fi
+
+      echo "Arrancando frontend Tauri desde binario..."
+      if [ "$FRONTEND_RUNTIME_SAFE" = "1" ]; then
+        WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}" \
+          GDK_BACKEND="${GDK_BACKEND:-x11}" \
+          "$FRONTEND_BINARY" &
+      else
+        "$FRONTEND_BINARY" &
+      fi
+      FRONTEND_PID=$!
+      ;;
+    none)
+      echo "Frontend desactivado (FRONTEND_MODE=none)."
+      ;;
+    *)
+      echo "FRONTEND_MODE no soportado: $FRONTEND_MODE. Usa dev, binary o none." >&2
+      exit 1
+      ;;
+  esac
 }
 
 start_redis_if_needed
@@ -280,6 +313,7 @@ if [ "$CHAT_WORKER_ENABLED" = "1" ] && [ -n "$CHAT_WORKER_PID" ]; then
   echo "  Chat worker:  cola Redis $CHAT_TURN_QUEUE_KEY"
 fi
 echo "  Frontend:     $FRONTEND_DIR"
+echo "  Modo UI:      $FRONTEND_MODE"
 echo "Pulsa Ctrl+C para pararlo todo."
 echo
 

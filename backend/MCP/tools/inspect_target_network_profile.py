@@ -18,6 +18,7 @@ from tools.scan_wifi_networks import (
     AIRODUMP_CSV_SUFFIX,
     build_airodump_command,
     parse_airodump_csv,
+    read_airodump_csv_text,
     stop_capture_process,
 )
 
@@ -69,7 +70,7 @@ def inspect_target_network_profile_execute(input: dict[str, Any]) -> dict[str, A
                     f"stderr={stderr_text.strip() or '<empty>'}"
                 )
 
-            raw_csv = csv_path.read_text(encoding="utf-8")
+            raw_csv = read_airodump_csv_text(csv_path)
             networks, _clients = parse_airodump_csv(csv_path, include_hidden=True)
     finally:
         restore_managed_connection(requested_interface, restore_context)
