@@ -6,6 +6,7 @@ FRONTEND_DIR="$ROOT_DIR/frontend"
 FRONTEND_BINARY="${FRONTEND_BINARY:-$FRONTEND_DIR/src-tauri/target/release/wifitest-frontend}"
 BUILD_FRONTEND_IF_MISSING="${BUILD_FRONTEND_IF_MISSING:-1}"
 FRONTEND_BUILD_SCRIPT="${FRONTEND_BUILD_SCRIPT:-build:safe}"
+SELECTED_FRONTEND_MODE="${FRONTEND_MODE:-binary}"
 
 load_user_cargo_env() {
   if [ -f "$HOME/.cargo/env" ]; then
@@ -23,7 +24,7 @@ ensure_frontend_native_deps() {
   if ! command -v pkg-config >/dev/null 2>&1; then
     echo "No se ha encontrado pkg-config, necesario para compilar Tauri." >&2
     echo "En Debian/Kali/Parrot prueba: sudo apt-get install -y pkg-config" >&2
-    exit 1
+    return 1
   fi
 
   for module in glib-2.0 gobject-2.0 gtk+-3.0 webkit2gtk-4.1 librsvg-2.0; do
@@ -44,7 +45,7 @@ ensure_frontend_native_deps() {
   echo "  sudo apt-get install -y libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev libayatana-appindicator3-dev" >&2
   echo >&2
   echo "Tambien puedes relanzar ./scripts/install-linux.sh para que intente preparar estas dependencias." >&2
-  exit 1
+  return 1
 }
 
 confirm() {
@@ -69,6 +70,10 @@ confirm() {
 }
 
 ensure_frontend_binary() {
+  if [ "$SELECTED_FRONTEND_MODE" = "web" ]; then
+    return
+  fi
+
   if [ -x "$FRONTEND_BINARY" ]; then
     return
   fi
@@ -91,7 +96,13 @@ ensure_frontend_binary() {
     echo "Ejecuta ./scripts/install-linux.sh o instala Rust con rustup y abre una nueva terminal." >&2
     exit 1
   fi
-  ensure_frontend_native_deps
+  if ! ensure_frontend_native_deps; then
+    if confirm "Quieres arrancar la aplicacion en modo web sin compilar Tauri?" "y"; then
+      SELECTED_FRONTEND_MODE="web"
+      return
+    fi
+    exit 1
+  fi
 
   (
     cd "$FRONTEND_DIR"
@@ -108,6 +119,6 @@ ensure_frontend_binary
 
 cd "$ROOT_DIR"
 exec env \
-  FRONTEND_MODE=binary \
+  FRONTEND_MODE="$SELECTED_FRONTEND_MODE" \
   FRONTEND_BINARY="$FRONTEND_BINARY" \
   ./scripts/dev-stack.sh

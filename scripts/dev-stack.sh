@@ -41,6 +41,8 @@ FRONTEND_MODE="${FRONTEND_MODE:-dev}"
 FRONTEND_DEV_SCRIPT="${FRONTEND_DEV_SCRIPT:-dev:safe}"
 FRONTEND_BINARY="${FRONTEND_BINARY:-$FRONTEND_BINARY_DEFAULT}"
 FRONTEND_RUNTIME_SAFE="${FRONTEND_RUNTIME_SAFE:-1}"
+FRONTEND_WEB_HOST="${FRONTEND_WEB_HOST:-127.0.0.1}"
+FRONTEND_WEB_PORT="${FRONTEND_WEB_PORT:-5174}"
 
 load_user_cargo_env() {
   if [ -f "$HOME/.cargo/env" ]; then
@@ -341,11 +343,25 @@ run_frontend() {
       fi
       FRONTEND_PID=$!
       ;;
+    web)
+      if ! command -v python3 >/dev/null 2>&1; then
+        echo "No se ha encontrado python3 para servir el frontend web." >&2
+        exit 1
+      fi
+
+      ensure_port_available "$FRONTEND_WEB_PORT" "Frontend web"
+      echo "Arrancando frontend en modo web..."
+      python3 "$ROOT_DIR/scripts/serve-frontend-web.py" \
+        --root "$ROOT_DIR" \
+        --host "$FRONTEND_WEB_HOST" \
+        --port "$FRONTEND_WEB_PORT" &
+      FRONTEND_PID=$!
+      ;;
     none)
       echo "Frontend desactivado (FRONTEND_MODE=none)."
       ;;
     *)
-      echo "FRONTEND_MODE no soportado: $FRONTEND_MODE. Usa dev, binary o none." >&2
+      echo "FRONTEND_MODE no soportado: $FRONTEND_MODE. Usa dev, binary, web o none." >&2
       exit 1
       ;;
   esac
@@ -375,6 +391,9 @@ if [ "$CHAT_WORKER_ENABLED" = "1" ] && [ -n "$CHAT_WORKER_PID" ]; then
 fi
 echo "  Frontend:     $FRONTEND_DIR"
 echo "  Modo UI:      $FRONTEND_MODE"
+if [ "$FRONTEND_MODE" = "web" ] && [ -n "$FRONTEND_PID" ]; then
+  echo "  URL UI:       http://$FRONTEND_WEB_HOST:$FRONTEND_WEB_PORT"
+fi
 echo "Pulsa Ctrl+C para pararlo todo."
 echo
 
