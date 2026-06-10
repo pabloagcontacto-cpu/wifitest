@@ -316,10 +316,44 @@ def get_nmcli_connection_name(interface: str) -> str | None:
     return value or None
 
 
+def networkmanager_sees_wifi_interface(interface: str) -> bool:
+    """Return whether NetworkManager currently exposes the interface as Wi-Fi."""
+    if shutil.which("nmcli") is None:
+        return False
+
+    completed = run_command(["nmcli", "-t", "-f", "DEVICE,TYPE", "device", "status"], check=False)
+    expected_prefix = f"{interface}:wifi"
+    return any(line.strip() == expected_prefix for line in completed.stdout.splitlines())
+
+
 def ensure_networkmanager_manages_interface(interface: str) -> None:
     """Ensure NetworkManager is running and owns the interface, without reconnecting it."""
-    run_command(["systemctl", "start", "NetworkManager"], check=False)
-    run_command(["nmcli", "device", "set", interface, "managed", "yes"], check=False)
+    if shutil.which("rfkill") is not None:
+        run_command(["rfkill", "unblock", "wifi"], check=False)
+
+    run_command(["ip", "link", "set", interface, "up"], check=False)
+
+    if shutil.which("systemctl") is not None:
+        run_command(["systemctl", "start", "NetworkManager"], check=False)
+
+    if shutil.which("nmcli") is not None:
+        run_command(["nmcli", "radio", "wifi", "on"], check=False)
+        run_command(["nmcli", "device", "set", interface, "managed", "yes"], check=False)
+
+    time.sleep(1)
+
+    if networkmanager_sees_wifi_interface(interface):
+        return
+
+    if shutil.which("systemctl") is not None:
+        run_command(["systemctl", "restart", "NetworkManager"], check=False)
+        time.sleep(2)
+
+    run_command(["ip", "link", "set", interface, "up"], check=False)
+
+    if shutil.which("nmcli") is not None:
+        run_command(["nmcli", "radio", "wifi", "on"], check=False)
+        run_command(["nmcli", "device", "set", interface, "managed", "yes"], check=False)
 
 
 def reconnect_interface_with_networkmanager(interface: str) -> None:
@@ -331,11 +365,20 @@ def reconnect_interface_with_networkmanager(interface: str) -> None:
 def rescan_wifi_networks(interface: str, settle_seconds: float = 3.0) -> str:
     """Trigger a Wi-Fi rescan through NetworkManager and wait briefly."""
     completed = run_command(["nmcli", "device", "wifi", "rescan", "ifname", interface], check=False)
-    if settle_seconds > 0:
-        time.sleep(settle_seconds)
-    return "\n".join(
+    combined_output = "\n".join(
         part for part in [completed.stdout.strip(), completed.stderr.strip()] if part
     )
+
+    if "not a Wi-Fi device" in combined_output:
+        ensure_networkmanager_manages_interface(interface)
+        completed = run_command(["nmcli", "device", "wifi", "rescan", "ifname", interface], check=False)
+        combined_output = "\n".join(
+            part for part in [completed.stdout.strip(), completed.stderr.strip()] if part
+        )
+
+    if settle_seconds > 0:
+        time.sleep(settle_seconds)
+    return combined_output
 
 
 def list_visible_wifi_ssids(interface: str) -> list[str]:

@@ -137,7 +137,7 @@ packages_for_manager() {
         python3 python3-venv python3-pip
         nodejs npm cargo rustc
         redis-server
-        aircrack-ng reaver iw iproute2 network-manager net-tools iputils-ping
+        aircrack-ng reaver iw iproute2 network-manager net-tools iputils-ping rfkill
         curl wget file openssl pkg-config libssl-dev
         libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
       )
@@ -294,6 +294,13 @@ get_interface_mode() {
   iw dev "$interface" info 2>/dev/null | awk '/type/ { print $2; exit }'
 }
 
+networkmanager_sees_wifi_interface() {
+  local interface="$1"
+
+  command -v nmcli >/dev/null 2>&1 || return 1
+  nmcli -t -f DEVICE,TYPE device status 2>/dev/null | grep -Fxq "${interface}:wifi"
+}
+
 find_monitor_interface_for() {
   local base_interface="$1"
   local normalized_base="${base_interface%mon}"
@@ -320,6 +327,10 @@ restore_wifi_interface_after_check() {
 
   log "Restaurando interfaz Wi-Fi"
 
+  if command -v rfkill >/dev/null 2>&1; then
+    run_sudo rfkill unblock wifi >/dev/null 2>&1 || true
+  fi
+
   if [ -n "$monitor_interface" ] && [ "$monitor_interface" != "$base_interface" ] && command -v airmon-ng >/dev/null 2>&1; then
     run_sudo airmon-ng stop "$monitor_interface" >/dev/null 2>&1 || true
   fi
@@ -339,9 +350,21 @@ restore_wifi_interface_after_check() {
   fi
 
   if command -v nmcli >/dev/null 2>&1; then
+    run_sudo nmcli radio wifi on >/dev/null 2>&1 || true
     if interface_exists "$normalized_base"; then
       run_sudo nmcli device set "$normalized_base" managed yes >/dev/null 2>&1 || true
-      run_sudo nmcli device connect "$normalized_base" >/dev/null 2>&1 || true
+    fi
+  fi
+
+  sleep 2
+
+  if ! networkmanager_sees_wifi_interface "$normalized_base" && command -v systemctl >/dev/null 2>&1; then
+    run_sudo systemctl restart NetworkManager.service >/dev/null 2>&1 || true
+    sleep 2
+    run_sudo ip link set "$normalized_base" up >/dev/null 2>&1 || true
+    if command -v nmcli >/dev/null 2>&1; then
+      run_sudo nmcli radio wifi on >/dev/null 2>&1 || true
+      run_sudo nmcli device set "$normalized_base" managed yes >/dev/null 2>&1 || true
     fi
   fi
 }
@@ -532,6 +555,13 @@ verify_wifi_adapter_capability() {
   set -e
 
   restore_wifi_interface_after_check "$interface" "$original_mode" "$monitor_interface"
+
+  if ! networkmanager_sees_wifi_interface "${interface%mon}"; then
+    set_env_var "$BACKEND_ENV_FILE" "WIFITEST_WIFI_ADAPTER_CHECK" "restore_failed_networkmanager"
+    warn "La captura termino, pero NetworkManager no ve la interfaz restaurada como Wi-Fi."
+    warn "Ejecuta: sudo rfkill unblock wifi; sudo ip link set ${interface%mon} up; sudo systemctl restart NetworkManager; sudo nmcli radio wifi on; sudo nmcli device set ${interface%mon} managed yes"
+    return
+  fi
 
   case "$capture_status" in
     0)
