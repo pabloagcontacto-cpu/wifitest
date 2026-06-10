@@ -155,7 +155,6 @@ packages_for_manager() {
         git build-essential
         python3 python3-venv python3-pip
         nodejs npm
-        redis-server
         aircrack-ng reaver iw iproute2 network-manager net-tools iputils-ping rfkill
         curl wget file openssl pkg-config libssl-dev
         libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
@@ -257,6 +256,54 @@ install_missing_packages() {
       run_sudo zypper install -y "${missing[@]}"
       ;;
   esac
+}
+
+redis_runtime_available() {
+  if command -v redis-server >/dev/null 2>&1 || command -v valkey-server >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if command -v redis-cli >/dev/null 2>&1 && redis-cli ping >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if command -v valkey-cli >/dev/null 2>&1 && valkey-cli ping >/dev/null 2>&1; then
+    return 0
+  fi
+
+  return 1
+}
+
+ensure_redis_dependency() {
+  local candidates=()
+  local package=""
+
+  if redis_runtime_available; then
+    info "Redis/Valkey ya esta disponible."
+    return
+  fi
+
+  if [ "$PACKAGE_MANAGER" != "apt" ]; then
+    warn "No se ha encontrado Redis/Valkey. Instala Redis o Valkey antes de arrancar la app."
+    return
+  fi
+
+  candidates=(redis-server redis valkey-server)
+
+  log "Preparando Redis/Valkey"
+  run_sudo apt-get update
+
+  for package in "${candidates[@]}"; do
+    if package_available "$package"; then
+      if run_sudo apt-get install -y "$package"; then
+        info "Redis/Valkey instalado mediante paquete apt: $package"
+        return
+      fi
+    fi
+  done
+
+  warn "No se ha encontrado ningun paquete apt compatible para Redis/Valkey."
+  warn "Sin Redis/Valkey el MCP y el chat no podran procesar jobs."
 }
 
 ensure_services() {
@@ -988,6 +1035,7 @@ main() {
   log "Instalador Linux de WIFITEST"
   detect_distro
   install_missing_packages
+  ensure_redis_dependency
   ensure_services
   ensure_rust_toolchain
   choose_wifi_interface
