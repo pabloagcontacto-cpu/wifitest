@@ -5,7 +5,7 @@ La aplicación WIFITEST está pensada para ejecutarse en sistemas Linux comunes,
 El proceso básico de instalación consta de tres pasos. Primero se clona el repositorio:
 
 ```bash
-git clone [<URL_DEL_REPOSITORIO>](https://github.com/pabloagcontacto-cpu/wifitest)
+git clone https://github.com/pabloagcontacto-cpu/wifitest
 cd wifitest
 ```
 
