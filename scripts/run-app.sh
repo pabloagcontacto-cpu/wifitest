@@ -16,6 +16,37 @@ load_user_cargo_env() {
   fi
 }
 
+ensure_frontend_native_deps() {
+  local missing=()
+  local module
+
+  if ! command -v pkg-config >/dev/null 2>&1; then
+    echo "No se ha encontrado pkg-config, necesario para compilar Tauri." >&2
+    echo "En Debian/Kali/Parrot prueba: sudo apt-get install -y pkg-config" >&2
+    exit 1
+  fi
+
+  for module in glib-2.0 gobject-2.0 gtk+-3.0 webkit2gtk-4.1 librsvg-2.0; do
+    if ! pkg-config --exists "$module"; then
+      missing+=("$module")
+    fi
+  done
+
+  if [ "${#missing[@]}" -eq 0 ]; then
+    return
+  fi
+
+  echo "Faltan dependencias nativas de Tauri/GTK:" >&2
+  printf '  %s\n' "${missing[@]}" >&2
+  echo >&2
+  echo "En Debian/Kali/Parrot normalmente se corrige con:" >&2
+  echo "  sudo apt-get update" >&2
+  echo "  sudo apt-get install -y libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev libayatana-appindicator3-dev" >&2
+  echo >&2
+  echo "Tambien puedes relanzar ./scripts/install-linux.sh para que intente preparar estas dependencias." >&2
+  exit 1
+}
+
 confirm() {
   local question="$1"
   local default="${2:-y}"
@@ -60,6 +91,7 @@ ensure_frontend_binary() {
     echo "Ejecuta ./scripts/install-linux.sh o instala Rust con rustup y abre una nueva terminal." >&2
     exit 1
   fi
+  ensure_frontend_native_deps
 
   (
     cd "$FRONTEND_DIR"
