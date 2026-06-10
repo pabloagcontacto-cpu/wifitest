@@ -19,6 +19,10 @@ DISTRO_ID="unknown"
 DISTRO_LIKE=""
 PACKAGE_MANAGER=""
 
+if [ -d "$HOME/.cargo/bin" ]; then
+  export PATH="$HOME/.cargo/bin:$PATH"
+fi
+
 log() {
   printf '\n==> %s\n' "$*"
 }
@@ -118,6 +122,21 @@ package_installed() {
   esac
 }
 
+package_available() {
+  local package="$1"
+  local candidate=""
+
+  case "$PACKAGE_MANAGER" in
+    apt)
+      candidate="$(apt-cache policy "$package" 2>/dev/null | awk '/Candidate:/ { print $2; exit }')"
+      [ -n "$candidate" ] && [ "$candidate" != "(none)" ]
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
 packages_for_manager() {
   case "$PACKAGE_MANAGER" in
     pacman)
@@ -135,7 +154,7 @@ packages_for_manager() {
       PACKAGES=(
         git build-essential
         python3 python3-venv python3-pip
-        nodejs npm cargo rustc
+        nodejs npm
         redis-server
         aircrack-ng reaver iw iproute2 network-manager net-tools iputils-ping rfkill
         curl wget file openssl pkg-config libssl-dev
@@ -177,9 +196,11 @@ install_missing_packages() {
   packages_for_manager
 
   for package in "${PACKAGES[@]}"; do
-    if ! package_installed "$package"; then
-      missing+=("$package")
+    if package_installed "$package"; then
+      continue
     fi
+
+    missing+=("$package")
   done
 
   if [ "${#missing[@]}" -eq 0 ]; then
@@ -201,7 +222,33 @@ install_missing_packages() {
       ;;
     apt)
       run_sudo apt-get update
-      run_sudo apt-get install -y "${missing[@]}"
+      local installable=()
+      local unavailable=()
+      local failed=()
+
+      for package in "${missing[@]}"; do
+        if package_available "$package"; then
+          installable+=("$package")
+        else
+          unavailable+=("$package")
+        fi
+      done
+
+      if [ "${#unavailable[@]}" -gt 0 ]; then
+        warn "Se omiten paquetes sin candidato en los repositorios actuales:"
+        printf '  %s\n' "${unavailable[@]}" >&2
+      fi
+
+      for package in "${installable[@]}"; do
+        if ! run_sudo apt-get install -y "$package"; then
+          failed+=("$package")
+        fi
+      done
+
+      if [ "${#failed[@]}" -gt 0 ]; then
+        warn "No se pudieron instalar estos paquetes apt:"
+        printf '  %s\n' "${failed[@]}" >&2
+      fi
       ;;
     dnf)
       run_sudo dnf install -y "${missing[@]}"
@@ -225,7 +272,12 @@ ensure_services() {
 
   if systemctl list-unit-files redis.service >/dev/null 2>&1; then
     log "Activando Redis"
-    run_sudo systemctl enable --now redis.service || warn "No se pudo activar redis.service."
+    if ! run_sudo systemctl enable --now redis.service; then
+      warn "No se pudo activar redis.service; probando redis-server.service."
+      if systemctl list-unit-files redis-server.service >/dev/null 2>&1; then
+        run_sudo systemctl enable --now redis-server.service || warn "No se pudo activar redis-server.service."
+      fi
+    fi
   elif systemctl list-unit-files redis-server.service >/dev/null 2>&1; then
     log "Activando Redis"
     run_sudo systemctl enable --now redis-server.service || warn "No se pudo activar redis-server.service."
@@ -244,9 +296,25 @@ ensure_rust_toolchain() {
     return
   fi
 
-  if ! command -v cargo >/dev/null 2>&1; then
-    warn "No se ha encontrado cargo. Instala Rust antes de compilar Tauri."
+  if command -v cargo >/dev/null 2>&1 && command -v rustc >/dev/null 2>&1; then
+    info "Rust ya esta disponible."
+    return
   fi
+
+  log "Preparando Rust"
+  if ! command -v curl >/dev/null 2>&1; then
+    warn "No se ha encontrado curl. Instala Rust manualmente con rustup antes de compilar Tauri."
+    return
+  fi
+
+  if ! confirm "No se ha encontrado Rust completo. Quieres instalarlo con rustup en tu usuario?" "y"; then
+    warn "Rust no queda instalado. La app podra preparar backend/chat, pero no compilar Tauri."
+    return
+  fi
+
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+  export PATH="$HOME/.cargo/bin:$PATH"
+  rustup default stable
 }
 
 set_env_var() {
