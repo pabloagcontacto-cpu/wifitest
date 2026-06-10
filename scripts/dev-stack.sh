@@ -42,6 +42,16 @@ FRONTEND_DEV_SCRIPT="${FRONTEND_DEV_SCRIPT:-dev:safe}"
 FRONTEND_BINARY="${FRONTEND_BINARY:-$FRONTEND_BINARY_DEFAULT}"
 FRONTEND_RUNTIME_SAFE="${FRONTEND_RUNTIME_SAFE:-1}"
 
+load_user_cargo_env() {
+  if [ -f "$HOME/.cargo/env" ]; then
+    # shellcheck disable=SC1090
+    . "$HOME/.cargo/env"
+  elif [ -d "$HOME/.cargo/bin" ]; then
+    PATH="$HOME/.cargo/bin:$PATH"
+    export PATH
+  fi
+}
+
 cleanup() {
   echo
   echo "Parando stack local..."
@@ -341,6 +351,7 @@ run_frontend() {
   esac
 }
 
+load_user_cargo_env
 start_redis_if_needed
 ensure_worker_privileges
 run_backend_worker

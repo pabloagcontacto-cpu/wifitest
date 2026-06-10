@@ -7,6 +7,15 @@ FRONTEND_BINARY="${FRONTEND_BINARY:-$FRONTEND_DIR/src-tauri/target/release/wifit
 BUILD_FRONTEND_IF_MISSING="${BUILD_FRONTEND_IF_MISSING:-1}"
 FRONTEND_BUILD_SCRIPT="${FRONTEND_BUILD_SCRIPT:-build:safe}"
 
+load_user_cargo_env() {
+  if [ -f "$HOME/.cargo/env" ]; then
+    # shellcheck disable=SC1090
+    . "$HOME/.cargo/env"
+  elif [ -d "$HOME/.cargo/bin" ]; then
+    export PATH="$HOME/.cargo/bin:$PATH"
+  fi
+}
+
 confirm() {
   local question="$1"
   local default="${2:-y}"
@@ -42,6 +51,13 @@ ensure_frontend_binary() {
   echo "No se ha encontrado el binario release de WIFITEST."
   if ! confirm "Quieres compilarlo ahora?"; then
     echo "No se puede lanzar la aplicacion sin binario." >&2
+    exit 1
+  fi
+
+  load_user_cargo_env
+  if ! command -v cargo >/dev/null 2>&1; then
+    echo "No se ha encontrado cargo en el PATH." >&2
+    echo "Ejecuta ./scripts/install-linux.sh o instala Rust con rustup y abre una nueva terminal." >&2
     exit 1
   fi
 
