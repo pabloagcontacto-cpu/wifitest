@@ -231,6 +231,14 @@ install_missing_packages() {
       for package in "${missing[@]}"; do
         if package_available "$package"; then
           installable+=("$package")
+        elif [ "$package" = "libgtk-3-dev" ] && package_available "libgtk-3-common"; then
+          unavailable+=("$package")
+          if package_installed "libgtk-3-common"; then
+            warn "libgtk-3-dev no esta disponible; libgtk-3-common ya esta instalado como fallback."
+          else
+            warn "libgtk-3-dev no esta disponible; se instalara libgtk-3-common como fallback."
+            installable+=("libgtk-3-common")
+          fi
         else
           unavailable+=("$package")
         fi
