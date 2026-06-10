@@ -826,10 +826,26 @@ configure_cloudflare() {
   info "El chat con OpenAI + MCP necesita una URL publica HTTPS porque OpenAI no puede llamar a localhost."
   info "Para usarlo necesitas una cuenta de Cloudflare y un dominio/subdominio gestionado en Cloudflare."
 
+  local existing_tunnel existing_hostname existing_enabled
+  existing_tunnel="$(read_env_var "$BACKEND_ENV_FILE" "TUNNEL_NAME" || true)"
+  existing_hostname="$(read_env_var "$BACKEND_ENV_FILE" "TUNNEL_HOSTNAME" || true)"
+  existing_enabled="$(read_env_var "$BACKEND_ENV_FILE" "TUNNEL_ENABLED" || true)"
+
   if ! confirm "Quieres configurar Cloudflare Tunnel ahora?" "n"; then
+    if [ -n "$existing_tunnel" ] && [ -n "$existing_hostname" ] && [ "$existing_hostname" != "mcp.tudominio.com" ]; then
+      info "Se conserva la configuracion Cloudflare existente: $existing_tunnel -> $existing_hostname."
+      if [ "$existing_enabled" = "1" ]; then
+        configure_chat_env "https://${existing_hostname}/mcp"
+      else
+        info "TUNNEL_ENABLED no esta activo. Para usar el tunel, pon TUNNEL_ENABLED=1 o vuelve a configurar Cloudflare."
+        configure_chat_env ""
+      fi
+      return
+    fi
+
     set_env_var "$BACKEND_ENV_FILE" "TUNNEL_ENABLED" "0"
     configure_chat_env ""
-    info "Tunel desactivado. Puedes arrancar el resto de la app sin chat MCP remoto."
+    info "No habia configuracion Cloudflare previa. Puedes arrancar el resto de la app sin chat MCP remoto."
     return
   fi
 
