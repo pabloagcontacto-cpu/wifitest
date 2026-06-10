@@ -32,6 +32,7 @@ El script también prepara los entornos Python del backend MCP y del servicio de
 
 El script de arranque [`scripts/run-app.sh`](scripts/run-app.sh) se encarga de lanzar la aplicación completa. Si existe un binario Tauri compilado, arranca la interfaz de escritorio directamente. Si no existe, ofrece compilarlo. En sistemas donde no sea posible compilar Tauri por falta de librerías gráficas nativas (en las pruebas sucedió únicamente en Parrot OS), también se contempla el modo web, que sirve la misma interfaz desde un servidor local y permite usar la aplicación desde el navegador. Además, el arranque levanta Redis si es necesario, inicia el worker MCP, el servidor MCP, el servicio de chat, el worker de chat y, si está configurado, el túnel de Cloudflare.
 
-Si no se quiere hacer la instalación manual de la aplicación, se ha publicado un vídeo en el propio repositorio llamado [`Demo.mp4`](Demo.mp4) en el que se muestra en detalle el funcionamiento completo de la aplicación.
+Si no se quiere hacer la instalación manual de la aplicación, a continuación se ofrece un vídeo con la demostración detallada del funcionamiento de la aplicación. 
+📄 **Demo.mp4:** [Vídeo de demostración](https://drive.google.com/file/d/19MG8EqG2WpZzjpm8jSje2CNbvFGYMFcM/view)
 
 
