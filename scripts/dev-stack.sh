@@ -17,6 +17,8 @@ fi
 
 REDIS_STARTED=0
 REDIS_PID=""
+REDIS_CONTAINER_STARTED=0
+REDIS_CONTAINER_RUNTIME=""
 WORKER_PID=""
 SERVER_PID=""
 FRONTEND_PID=""
@@ -78,10 +80,48 @@ cleanup() {
     kill "$REDIS_PID" 2>/dev/null || true
     wait "$REDIS_PID" 2>/dev/null || true
   fi
+
+  if [ "$REDIS_CONTAINER_STARTED" -eq 1 ] && [ -n "$REDIS_CONTAINER_RUNTIME" ]; then
+    "$REDIS_CONTAINER_RUNTIME" stop wifitest-redis >/dev/null 2>&1 || true
+  fi
 }
 
 trap 'cleanup; exit 0' INT TERM
 trap 'cleanup' EXIT
+
+redis_port_open() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 1
+  fi
+
+  python3 -c 'import socket, sys; s=socket.socket(); s.settimeout(0.5); sys.exit(0 if s.connect_ex(("127.0.0.1", 6379)) == 0 else 1)' >/dev/null 2>&1
+}
+
+start_redis_container_if_available() {
+  for runtime in podman docker; do
+    if ! command -v "$runtime" >/dev/null 2>&1; then
+      continue
+    fi
+
+    if "$runtime" ps --format '{{.Names}}' 2>/dev/null | grep -Fxq wifitest-redis; then
+      echo "Redis en contenedor ya estaba levantado ($runtime)."
+      REDIS_CONTAINER_RUNTIME="$runtime"
+      return 0
+    fi
+
+    if "$runtime" ps -a --format '{{.Names}}' 2>/dev/null | grep -Fxq wifitest-redis; then
+      echo "Arrancando Redis en contenedor ($runtime)..."
+      "$runtime" start wifitest-redis >/dev/null
+      REDIS_CONTAINER_RUNTIME="$runtime"
+      REDIS_CONTAINER_STARTED=1
+      sleep 2
+      redis_port_open
+      return
+    fi
+  done
+
+  return 1
+}
 
 start_redis_if_needed() {
   if command -v redis-cli >/dev/null 2>&1 && redis-cli ping >/dev/null 2>&1; then
@@ -112,7 +152,17 @@ start_redis_if_needed() {
     return
   fi
 
+  if redis_port_open; then
+    echo "Redis/Valkey ya responde en 127.0.0.1:6379."
+    return
+  fi
+
+  if start_redis_container_if_available; then
+    return
+  fi
+
   echo "No se ha encontrado Redis/Valkey instalado y no habia ninguna instancia levantada." >&2
+  echo "Ejecuta ./scripts/install-linux.sh para instalar Redis o crear el contenedor wifitest-redis." >&2
   exit 1
 }
 

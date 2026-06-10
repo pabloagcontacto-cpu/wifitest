@@ -14,6 +14,8 @@ ASSUME_YES="${ASSUME_YES:-0}"
 FORCE_PIP_INSTALL="${FORCE_PIP_INSTALL:-0}"
 FORCE_NPM_INSTALL="${FORCE_NPM_INSTALL:-0}"
 AIRMON_MONITOR_INTERFACE=""
+CONTAINER_RUNTIME=""
+CONTAINER_USE_SUDO=0
 
 DISTRO_ID="unknown"
 DISTRO_LIKE=""
@@ -259,6 +261,10 @@ install_missing_packages() {
 }
 
 redis_runtime_available() {
+  if redis_port_open; then
+    return 0
+  fi
+
   if command -v redis-server >/dev/null 2>&1 || command -v valkey-server >/dev/null 2>&1; then
     return 0
   fi
@@ -272,6 +278,122 @@ redis_runtime_available() {
   fi
 
   return 1
+}
+
+redis_port_open() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 1
+  fi
+
+  python3 -c 'import socket, sys; s=socket.socket(); s.settimeout(0.5); sys.exit(0 if s.connect_ex(("127.0.0.1", 6379)) == 0 else 1)' >/dev/null 2>&1
+}
+
+detect_container_runtime() {
+  CONTAINER_RUNTIME=""
+  CONTAINER_USE_SUDO=0
+
+  if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+    CONTAINER_RUNTIME="podman"
+    return 0
+  fi
+
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    CONTAINER_RUNTIME="docker"
+    return 0
+  fi
+
+  if command -v docker >/dev/null 2>&1 && run_sudo docker info >/dev/null 2>&1; then
+    CONTAINER_RUNTIME="docker"
+    CONTAINER_USE_SUDO=1
+    return 0
+  fi
+
+  return 1
+}
+
+container_cmd() {
+  if [ "$CONTAINER_USE_SUDO" = "1" ]; then
+    run_sudo "$CONTAINER_RUNTIME" "$@"
+    return
+  fi
+
+  "$CONTAINER_RUNTIME" "$@"
+}
+
+ensure_container_runtime_dependency() {
+  local candidates=()
+  local package=""
+
+  if detect_container_runtime; then
+    info "Runtime de contenedores disponible: $CONTAINER_RUNTIME"
+    return 0
+  fi
+
+  if [ "$PACKAGE_MANAGER" != "apt" ]; then
+    warn "No se ha encontrado Docker/Podman para arrancar Redis en contenedor."
+    return 1
+  fi
+
+  candidates=(podman docker.io)
+
+  if ! confirm "No hay Redis/Valkey nativo. Quieres instalar Podman/Docker para arrancar Redis en contenedor?" "y"; then
+    return 1
+  fi
+
+  run_sudo apt-get update
+  for package in "${candidates[@]}"; do
+    if package_available "$package"; then
+      if run_sudo apt-get install -y "$package"; then
+        if [ "$package" = "docker.io" ] && command -v systemctl >/dev/null 2>&1; then
+          run_sudo systemctl enable --now docker.service || warn "No se pudo activar docker.service."
+        fi
+
+        if detect_container_runtime; then
+          info "Runtime de contenedores preparado: $CONTAINER_RUNTIME"
+          return 0
+        fi
+      fi
+    fi
+  done
+
+  warn "No se ha podido instalar Podman/Docker desde apt."
+  return 1
+}
+
+start_redis_container() {
+  local container_name="wifitest-redis"
+  local image="docker.io/library/redis:7-alpine"
+
+  if redis_port_open; then
+    info "Ya hay un servicio escuchando en 127.0.0.1:6379."
+    return 0
+  fi
+
+  if ! ensure_container_runtime_dependency; then
+    return 1
+  fi
+
+  if container_cmd ps --format '{{.Names}}' 2>/dev/null | grep -Fxq "$container_name"; then
+    info "El contenedor $container_name ya esta en ejecucion."
+    return 0
+  fi
+
+  if container_cmd ps -a --format '{{.Names}}' 2>/dev/null | grep -Fxq "$container_name"; then
+    info "Arrancando contenedor Redis existente: $container_name"
+    container_cmd start "$container_name"
+    sleep 2
+    redis_port_open
+    return
+  fi
+
+  info "Creando contenedor Redis local: $container_name"
+  container_cmd run -d \
+    --name "$container_name" \
+    --restart unless-stopped \
+    -p 127.0.0.1:6379:6379 \
+    "$image"
+  sleep 2
+  redis_port_open
 }
 
 ensure_redis_dependency() {
@@ -303,6 +425,11 @@ ensure_redis_dependency() {
   done
 
   warn "No se ha encontrado ningun paquete apt compatible para Redis/Valkey."
+  if start_redis_container; then
+    info "Redis queda disponible en 127.0.0.1:6379 mediante contenedor."
+    return
+  fi
+
   warn "Sin Redis/Valkey el MCP y el chat no podran procesar jobs."
 }
 
