@@ -241,6 +241,9 @@ window.addEventListener("DOMContentLoaded", () => {
       schema_version: 1,
       source: "wifitest-frontend",
       generated_at: new Date().toISOString(),
+      local_runtime: {
+        default_wifi_interface: getDefaultWifiInterface(),
+      },
       target_network: targetNetwork
         ? {
             target_ssid: targetContext.targetSsid,

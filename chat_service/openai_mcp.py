@@ -28,10 +28,17 @@ JOB_ID_TEXT_REGEX = re.compile(
 
 
 def build_mcp_tool() -> dict[str, Any]:
+    server_description = settings.OPENAI_MCP_SERVER_DESCRIPTION
+    if settings.WIFITEST_WIFI_INTERFACE:
+        server_description = (
+            f"{server_description} Interfaz Wi-Fi local configurada: "
+            f"{settings.WIFITEST_WIFI_INTERFACE}."
+        )
+
     return {
         "type": "mcp",
         "server_label": settings.OPENAI_MCP_SERVER_LABEL,
-        "server_description": settings.OPENAI_MCP_SERVER_DESCRIPTION,
+        "server_description": server_description,
         "server_url": settings.OPENAI_MCP_SERVER_URL,
         "require_approval": "never",
     }

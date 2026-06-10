@@ -2,17 +2,43 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
+from pathlib import Path
 from typing import Any
 
 from tool_contracts import get_tool_input_contract
 
 
+INTERFACE_PLACEHOLDERS = {"wlan0", "wlan0mon"}
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def read_configured_wifi_interface_from_local_config() -> str:
+    """Return the frontend local interface config when present."""
+    config_path = PROJECT_ROOT / "config" / "local.json"
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+
+    value = payload.get("default_wifi_interface")
+    return value.strip() if isinstance(value, str) else ""
+
+
+def get_configured_wifi_interface() -> str:
+    """Return the installer-selected Wi-Fi interface when configured."""
+    return (
+        os.getenv("WIFITEST_WIFI_INTERFACE", "").strip()
+        or read_configured_wifi_interface_from_local_config()
+    )
+
+
 def get_contract_default(arg_name: str, arg_contract: dict[str, Any]) -> Any:
     """Return the configured default for an argument."""
     if arg_name == "interface":
-        configured_interface = os.getenv("WIFITEST_WIFI_INTERFACE", "").strip()
+        configured_interface = get_configured_wifi_interface()
         if configured_interface != "":
             return configured_interface
 
@@ -35,6 +61,12 @@ def normalize_arg_with_default(raw_value: Any, arg_name: str, arg_contract: dict
         stripped_value = raw_value.strip()
         if stripped_value == "":
             return default_value
+        if arg_name == "interface":
+            configured_interface = get_configured_wifi_interface()
+            contract_default = str(arg_contract.get("default") or "").strip()
+            placeholder_values = {value for value in (contract_default, *INTERFACE_PLACEHOLDERS) if value}
+            if configured_interface and stripped_value in placeholder_values:
+                return configured_interface
         return stripped_value
 
     return raw_value

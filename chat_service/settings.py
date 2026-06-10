@@ -2,7 +2,23 @@
 
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _read_default_wifi_interface_from_local_config() -> str:
+    config_path = PROJECT_ROOT / "config" / "local.json"
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+
+    value = payload.get("default_wifi_interface")
+    return value.strip() if isinstance(value, str) else ""
 
 
 CHAT_SERVICE_HOST = os.getenv("CHAT_SERVICE_HOST", "127.0.0.1").strip()
@@ -47,3 +63,8 @@ OPENAI_MCP_SERVER_DESCRIPTION = os.getenv(
 OPENAI_MAX_TOOL_ROUNDS = int(os.getenv("OPENAI_MAX_TOOL_ROUNDS", "6"))
 OPENAI_JOB_POLL_INTERVAL_MS = int(os.getenv("OPENAI_JOB_POLL_INTERVAL_MS", "2000"))
 OPENAI_JOB_POLL_TIMEOUT_SECONDS = int(os.getenv("OPENAI_JOB_POLL_TIMEOUT_SECONDS", "600"))
+
+WIFITEST_WIFI_INTERFACE = (
+    os.getenv("WIFITEST_WIFI_INTERFACE", "").strip()
+    or _read_default_wifi_interface_from_local_config()
+)

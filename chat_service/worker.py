@@ -7,6 +7,7 @@ import json
 import logging
 import uuid
 
+from . import settings
 from .errors import friendly_error_message
 from .openai_client import create_openai_conversation
 from .openai_mcp import run_openai_mcp_turn
@@ -46,9 +47,43 @@ DEFAULT_OPENAI_INSTRUCTIONS = " ".join(
 )
 
 
+def build_openai_instructions() -> str:
+    configured_interface = settings.WIFITEST_WIFI_INTERFACE.strip()
+    if not configured_interface:
+        return DEFAULT_OPENAI_INSTRUCTIONS
+
+    return " ".join(
+        [
+            DEFAULT_OPENAI_INSTRUCTIONS,
+            f"La interfaz Wi-Fi local configurada por el instalador es '{configured_interface}'.",
+            "Cuando pidas tools MCP que acepten el argumento interface, usa esa interfaz salvo que el contexto global indique otra interfaz observada explicitamente.",
+            "No uses wlan0 como valor por defecto si la interfaz configurada es distinta.",
+        ]
+    )
+
+
 def build_user_input_with_context(user_text: str, context: dict | None) -> str:
+    configured_interface = settings.WIFITEST_WIFI_INTERFACE.strip()
+
     if not isinstance(context, dict) or not context:
+        if configured_interface:
+            return (
+                "Mensaje del usuario:\n"
+                f"{user_text}\n\n"
+                "Contexto local de WIFITEST:\n"
+                f"{json.dumps({'default_wifi_interface': configured_interface}, ensure_ascii=False, indent=2)}"
+            )
         return user_text
+
+    if configured_interface:
+        existing_runtime = context.get("local_runtime") if isinstance(context.get("local_runtime"), dict) else {}
+        context = {
+            **context,
+            "local_runtime": {
+                **existing_runtime,
+                "default_wifi_interface": configured_interface,
+            },
+        }
 
     return (
         "Mensaje del usuario:\n"
@@ -215,7 +250,7 @@ async def process_turn(turn_id: str) -> None:
         openai_turn_result = await run_openai_mcp_turn(
             user_input=user_input,
             conversation_id=openai_conversation_id,
-            instructions=DEFAULT_OPENAI_INSTRUCTIONS,
+            instructions=build_openai_instructions(),
             on_jobs_resolved=publish_resolved_jobs,
         )
 
