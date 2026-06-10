@@ -745,7 +745,15 @@ ensure_cloudflared_installed() {
 
 get_tunnel_id() {
   local tunnel_name="$1"
-  cloudflared tunnel info "$tunnel_name" 2>/dev/null | awk '/ID:/ { print $2; exit }'
+  local tunnel_id=""
+
+  tunnel_id="$(cloudflared tunnel info "$tunnel_name" 2>/dev/null | awk '/ID:/ { print $2; exit }')"
+  if [ -n "$tunnel_id" ]; then
+    printf '%s' "$tunnel_id"
+    return 0
+  fi
+
+  cloudflared tunnel list 2>/dev/null | awk -v name="$tunnel_name" '$2 == name { print $1; exit }'
 }
 
 write_cloudflared_config() {
